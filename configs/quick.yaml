@@ -1,0 +1,19 @@
+# Small sweep: finishes in minutes on a laptop (Phase 3).
+manifest_path: data/manifest.csv
+clips_per_group: 10
+distances_m: [1.0, 2.0]
+noise_files:
+  living: [DLIVING/ch01.wav]
+  tv: [data/noise/tv.wav]
+snr_db: [10.0, 0.0]
+include_clean: true
+models: [tiny]
+usable_wer: 0.20
+bootstrap_iters: 100
+seed: 0
+room:
+  dims_m: [5.0, 4.0, 2.7]
+  rt60_s: 0.5
+  mic_pos_m: [1.0, 2.0, 1.2]
+  source_height_m: 1.2
+  noise_pos_m: [4.5, 3.5, 1.0]

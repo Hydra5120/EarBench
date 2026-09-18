@@ -1,0 +1,15 @@
+# Clip selection for `earbench prepare --config configs/prepare.yaml` (Phase 1).
+# Common Voice spells the forties bucket "fourties" — do not "fix" this.
+cv_dir: cv26-australian-english
+tsv_files: [train.tsv, dev.tsv, test.tsv]
+out_dir: data/clips
+manifest_path: data/manifest.csv
+age_buckets:
+  older: [sixties, seventies, eighties, nineties]
+  younger: [twenties, thirties, fourties]
+clips_per_group: 50
+max_clips_per_speaker: 1
+min_duration_s: 3.0
+max_duration_s: 10.0
+min_up_votes: 2
+seed: 0
