@@ -29,6 +29,8 @@ class PrepareConfig(BaseModel):
     min_duration_s: float = 3.0
     max_duration_s: float = 10.0
     min_up_votes: int = 2
+    max_down_votes: int = 0
+    match_gender: bool = True
     seed: int = 0
 
 

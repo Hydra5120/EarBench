@@ -50,5 +50,11 @@ def test_example_configs_load() -> None:
     assert isinstance(load_config(CONFIGS_DIR / "room.yaml", RoomSessionConfig), RoomSessionConfig)
 
 
+def test_prepare_vote_and_gender_defaults() -> None:
+    cfg = PrepareConfig()
+    assert cfg.max_down_votes == 0
+    assert cfg.match_gender is True
+
+
 def test_config_hash_stable() -> None:
     assert config_hash(PrepareConfig()) == config_hash(PrepareConfig())
