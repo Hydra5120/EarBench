@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
 import typer
 
-from earbench import audio, manifest
-from earbench.config import ConfigError, PrepareConfig, load_config
+from earbench import audio, manifest, noise
+from earbench.config import ConfigError, PrepareConfig, SweepConfig, load_config
 
 app = typer.Typer(
     name="earbench",
@@ -79,6 +80,66 @@ def prepare_noise() -> None:
     typer.echo(f"ok: {TV_RAW_PATH} -> {TV_OUT_PATH} (16 kHz mono)")
     if failed:
         raise typer.Exit(code=1)
+
+
+def _load_16k(path: str | Path) -> np.ndarray:
+    mono, rate_hz = audio.load_mono(path)
+    return audio.resample_to_16k(mono, rate_hz)
+
+
+def _render_listen(
+    cfg: SweepConfig,
+    clip_id: str,
+    distance_m: float,
+    noise_type: str,
+    snr_db: float | None,
+    seed: int,
+) -> np.ndarray:
+    """Build one simulated condition for a clip from the manifest."""
+    rows = {row.clip_id: row for row in manifest.read_manifest(cfg.manifest_path)}
+    if clip_id not in rows:
+        raise ValueError(f"clip {clip_id!r} not in {cfg.manifest_path}")
+    clip = _load_16k(rows[clip_id].wav_path)
+    noise_file = None
+    if noise_type != "none":
+        if snr_db is None:
+            raise ValueError("--snr is needed when --noise is not 'none'")
+        if not cfg.noise_files.get(noise_type):
+            raise ValueError(f"noise type {noise_type!r} has no file in the config's noise_files")
+        noise_path = cfg.noise_files[noise_type][0]
+        if not noise_path.is_file():
+            raise ValueError(f"noise file {noise_path} not found (run `earbench prepare-noise`)")
+        noise_file = _load_16k(noise_path)
+    mixed, _ = noise.make_condition(clip, distance_m, cfg.room, noise_file, snr_db, seed)
+    # Scales speech and noise together, so the SNR is unchanged.
+    return audio.peak_normalise(mixed)
+
+
+@app.command()
+def listen(
+    clip: str = typer.Option(..., "--clip", help="Clip id from the manifest."),
+    distance: float = typer.Option(..., "--distance", help="Speaker-to-mic distance in metres."),
+    noise_type: str = typer.Option("none", "--noise", help="none, tv, living, kitchen, cafeteria."),
+    snr: float | None = typer.Option(None, "--snr", help="Target SNR in dB at the mic."),
+    config: str = typer.Option("configs/full.yaml", "--config", help="Sweep YAML config."),
+    seed: int | None = typer.Option(None, "--seed", help="Noise offset seed (default: config)."),
+    out: str | None = typer.Option(None, "--out", help="Output WAV path."),
+) -> None:
+    """Write one simulated condition to a WAV so you can hear it."""
+    try:
+        cfg = load_config(config, SweepConfig)
+        mixed = _render_listen(
+            cfg, clip, distance, noise_type, snr, cfg.seed if seed is None else seed
+        )
+    except (ConfigError, ValueError, OSError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    snr_tag = "" if noise_type == "none" else f"_snr{snr:g}"
+    out_path = (
+        Path(out) if out else Path(f"data/listen/{clip}_d{distance:g}m_{noise_type}{snr_tag}.wav")
+    )
+    audio.save_wav_16k_mono(out_path, mixed)
+    typer.echo(f"wrote {out_path}")
 
 
 @app.command()

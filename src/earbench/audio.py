@@ -86,3 +86,17 @@ def check_wav_16k_mono(path: str | Path) -> list[str]:
             return problems
     except wave.Error as exc:
         return [f"{wav_path}: unreadable WAV: {exc}"]
+
+
+def power(audio: np.ndarray) -> float:
+    """Mean square of a signal (its average power)."""
+    x = np.asarray(audio, dtype=np.float64)
+    return float(np.mean(x**2))
+
+
+def peak_normalise(audio: np.ndarray, peak: float = 0.9) -> np.ndarray:
+    """Scale audio so its largest sample is `peak`. Silence is returned unchanged."""
+    biggest = float(np.max(np.abs(audio)))
+    if biggest == 0.0:
+        return audio.copy()
+    return (audio * (peak / biggest)).astype(np.float32)
