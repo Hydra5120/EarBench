@@ -57,6 +57,8 @@ class SweepConfig(BaseModel):
     room: RoomConfig = RoomConfig()
     usable_wer: float = 0.20
     bootstrap_iters: int = 1000
+    cache_dir: Path = Path("data/cache/transcribe")
+    runs_dir: Path = Path("runs")
     seed: int = 0
 
 
@@ -74,6 +76,44 @@ class RoomSessionConfig(BaseModel):
     input_device: str | int | None = None
     model: str = "small"
     seed: int = 0
+
+
+class ResultRow(BaseModel):
+    """One scored (clip, condition, model) result, a row of runs/<run_id>/results.csv."""
+
+    run_id: str
+    source: Literal["sim", "room"]
+    clip_id: str
+    age_group: AgeGroup
+    distance_m: float
+    noise_type: NoiseType
+    snr_db: float | None = None
+    model: str
+    model_version: str
+    settings: str
+    reference: str
+    hypothesis: str
+    ref_words: int
+    errors: int
+    wer: float
+    config_hash: str
+
+
+class SummaryRow(BaseModel):
+    """One age group's pooled WER, interval and usable rate for one condition."""
+
+    model: str
+    age_group: AgeGroup
+    distance_m: float
+    noise_type: NoiseType
+    snr_db: float | None = None
+    n_clips: int
+    errors: int
+    ref_words: int
+    wer: float
+    ci_low: float
+    ci_high: float
+    usable_rate: float
 
 
 class ConfigError(ValueError):

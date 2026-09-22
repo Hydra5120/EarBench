@@ -6,6 +6,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
+import pytest
 import soundfile as sf
 
 from earbench import audio
@@ -59,6 +60,29 @@ def test_resample_same_rate_returns_equal_copy() -> None:
     tone = _sine(440.0, 0.5, SAMPLE_RATE_HZ)
     out = audio.resample_to_16k(tone, SAMPLE_RATE_HZ)
     np.testing.assert_array_equal(out, tone.astype(np.float32))
+
+
+def test_resample_rejects_content_above_nyquist() -> None:
+    # 12 kHz at 48 kHz is above the 8 kHz Nyquist of 16 kHz: anti-aliasing removes it.
+    tone = _sine(12_000.0, 1.0, 48_000)
+    out = audio.resample_to_16k(tone, 48_000)
+    rms = float(np.sqrt(np.mean(out.astype(np.float64) ** 2)))
+    assert rms < 0.01
+
+
+def test_active_speech_power_ignores_silence_padding() -> None:
+    tone = _sine(440.0, 0.5, SAMPLE_RATE_HZ)
+    padded = np.concatenate([tone, np.zeros(SAMPLE_RATE_HZ, dtype=np.float32)])
+    assert audio.active_speech_power(padded) == pytest.approx(audio.active_speech_power(tone))
+    # Whole-signal power drops with the silence; the active-speech level does not.
+    assert audio.power(padded) < audio.power(tone)
+
+
+def test_active_speech_power_ignores_quiet_frames() -> None:
+    loud = _sine(440.0, 0.5, SAMPLE_RATE_HZ)
+    quiet = (1e-4 * _sine(440.0, 0.5, SAMPLE_RATE_HZ)).astype(np.float32)
+    combined = np.concatenate([loud, quiet])  # > 40 dB below the loudest frame
+    assert audio.active_speech_power(combined) == pytest.approx(audio.active_speech_power(loud))
 
 
 def test_decode_clip_to_wav_writes_16k_mono(tmp_path: Path) -> None:

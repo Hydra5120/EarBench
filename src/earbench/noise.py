@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from earbench import room as room_sim
-from earbench.audio import power
+from earbench.audio import active_speech_power, power
 from earbench.config import RoomConfig
 
 
@@ -19,12 +19,17 @@ def pick_segment(noise: np.ndarray, n_samples: int, seed: int) -> np.ndarray:
 
 
 def mix(speech_at_mic: np.ndarray, noise_at_mic: np.ndarray, snr_db: float) -> np.ndarray:
-    """Add noise scaled so that power(speech) / power(noise) equals `snr_db`."""
+    """Add noise scaled so that active-speech power / noise power equals `snr_db`.
+
+    The speech level ignores pauses and silence padding (see
+    :func:`earbench.audio.active_speech_power`), so the target SNR reflects how
+    loud the speech actually is, not how much of the clip is quiet.
+    """
     if speech_at_mic.shape != noise_at_mic.shape:
         raise ValueError(
             f"speech and noise length differ: {speech_at_mic.shape} vs {noise_at_mic.shape}"
         )
-    speech_power = power(speech_at_mic)
+    speech_power = active_speech_power(speech_at_mic)
     noise_power = power(noise_at_mic)
     if noise_power == 0.0:
         raise ValueError("noise is silent, cannot set an SNR")
@@ -34,6 +39,17 @@ def mix(speech_at_mic: np.ndarray, noise_at_mic: np.ndarray, snr_db: float) -> n
     # Scale the noise to float32 first, so the added part has exactly the target power.
     scaled_noise = (noise_at_mic.astype(np.float64) * gain).astype(np.float32)
     return speech_at_mic + scaled_noise
+
+
+def speech_at_mic(clip: np.ndarray, distance_m: float, room: RoomConfig) -> np.ndarray:
+    """The clip as heard by the mic, after room simulation."""
+    return room_sim.simulate(clip, distance_m, room)
+
+
+def noise_at_mic(noise_file: np.ndarray, n_samples: int, seed: int, room: RoomConfig) -> np.ndarray:
+    """A seeded noise segment as heard by the mic, trimmed to `n_samples`."""
+    segment = pick_segment(noise_file, n_samples, seed)
+    return room_sim.simulate_noise(segment, room)[:n_samples]
 
 
 def make_condition(
@@ -48,10 +64,7 @@ def make_condition(
 
     Returns (mixed, speech_at_mic). With no noise, mixed is just speech_at_mic.
     """
-    speech_at_mic = room_sim.simulate(clip, distance_m, room)
+    speech = speech_at_mic(clip, distance_m, room)
     if noise_file is None or snr_db is None:
-        return speech_at_mic.copy(), speech_at_mic
-    n = speech_at_mic.shape[0]
-    segment = pick_segment(noise_file, n, seed)
-    noise_at_mic = room_sim.simulate_noise(segment, room)[:n]
-    return mix(speech_at_mic, noise_at_mic, snr_db), speech_at_mic
+        return speech.copy(), speech
+    return mix(speech, noise_at_mic(noise_file, speech.shape[0], seed, room), snr_db), speech

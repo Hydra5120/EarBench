@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import yaml
 from typer.testing import CliRunner
 
 from earbench.audio import check_wav_16k_mono, save_wav_16k_mono
 from earbench.cli import app
 from earbench.manifest import ManifestRow, write_manifest
+from earbench.transcribe import FakeTranscriber
 
 runner = CliRunner()
 
@@ -63,3 +65,18 @@ def test_listen_writes_wav(tmp_path: Path) -> None:
     result = runner.invoke(app, [*args, "--noise", "living", "--snr", "5", "--out", str(out)])
     assert result.exit_code == 1
     assert "not found" in result.output
+
+
+def test_sweep_command_runs_offline(monkeypatch, tmp_path: Path, sweep_env) -> None:
+    cfg, _, _ = sweep_env(n_per_group=1)
+    cfg_path = tmp_path / "sweep.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg.model_dump(mode="json")), encoding="utf-8")
+
+    def fake_factory(_cfg) -> object:
+        return lambda model: FakeTranscriber(default_text="a canned answer")
+
+    monkeypatch.setattr("earbench.sweep.default_transcriber_factory", fake_factory)
+    args = ["sweep", "--config", str(cfg_path), "--no-progress", "--run-id", "cli-run"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert (Path(cfg.runs_dir) / "cli-run" / "results.csv").is_file()

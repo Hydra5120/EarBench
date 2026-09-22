@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import math
 import wave
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+from scipy.signal import resample_poly
 
 SAMPLE_RATE_HZ = 16_000
+FRAME_MS = 20.0
+ACTIVE_RANGE_DB = 40.0
 
 
 def load_mono(path: str | Path) -> tuple[np.ndarray, int]:
@@ -23,18 +27,16 @@ def load_mono(path: str | Path) -> tuple[np.ndarray, int]:
 
 
 def resample_to_16k(audio: np.ndarray, sample_rate_hz: int) -> np.ndarray:
-    """Resample mono audio to 16 kHz with linear interpolation."""
+    """Resample mono audio to 16 kHz with a polyphase filter (anti-aliased)."""
     mono = np.asarray(audio, dtype=np.float32).reshape(-1)
     if sample_rate_hz == SAMPLE_RATE_HZ:
         return mono.copy()
     if sample_rate_hz <= 0:
         raise ValueError(f"invalid sample rate: {sample_rate_hz}")
-    duration_s = mono.shape[0] / sample_rate_hz
-    out_len = max(1, int(round(duration_s * SAMPLE_RATE_HZ)))
-    positions = np.linspace(0.0, float(mono.shape[0] - 1), out_len)
-    return np.interp(positions, np.arange(mono.shape[0]), mono.astype(np.float64)).astype(
-        np.float32
-    )
+    divisor = math.gcd(int(sample_rate_hz), SAMPLE_RATE_HZ)
+    up = SAMPLE_RATE_HZ // divisor
+    down = int(sample_rate_hz) // divisor
+    return resample_poly(mono, up, down).astype(np.float32)
 
 
 def measure_duration_s(n_samples: int, sample_rate_hz: int) -> float:
@@ -92,6 +94,33 @@ def power(audio: np.ndarray) -> float:
     """Mean square of a signal (its average power)."""
     x = np.asarray(audio, dtype=np.float64)
     return float(np.mean(x**2))
+
+
+def active_speech_power(
+    audio: np.ndarray,
+    sample_rate_hz: int = SAMPLE_RATE_HZ,
+    frame_ms: float = FRAME_MS,
+    range_db: float = ACTIVE_RANGE_DB,
+) -> float:
+    """Mean square of the active (speech) frames of a signal.
+
+    Splits the signal into 20 ms frames, keeps the frames within `range_db` of
+    the loudest frame, and returns the mean square of those frames. Pauses between
+    words and silence padding are ignored, so the level reflects speech, not gaps.
+    """
+    x = np.asarray(audio, dtype=np.float64).reshape(-1)
+    frame_length = max(1, int(round(frame_ms / 1000.0 * sample_rate_hz)))
+    n_frames = x.shape[0] // frame_length
+    if n_frames == 0:
+        return power(x)
+    frames = x[: n_frames * frame_length].reshape(n_frames, frame_length)
+    frame_powers = np.mean(frames**2, axis=1)
+    loudest = float(frame_powers.max())
+    if loudest == 0.0:
+        return 0.0
+    threshold = loudest / (10.0 ** (range_db / 10.0))
+    active = frame_powers[frame_powers >= threshold]
+    return float(np.mean(active))
 
 
 def peak_normalise(audio: np.ndarray, peak: float = 0.9) -> np.ndarray:

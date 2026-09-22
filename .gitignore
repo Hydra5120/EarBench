@@ -8,7 +8,6 @@ PCAFETER/
 data/
 runs/
 recordings/
-reports/*/
 !reports/.gitkeep
 
 # Audio + tabular data that must never be committed
@@ -27,6 +26,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .pyright/
+
+# Command Code workspace state
+.commandcode/
 
 # Secrets / local env
 .env

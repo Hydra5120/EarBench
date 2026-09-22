@@ -4,12 +4,17 @@ version = "0.1.0"
 description = "Test harness measuring how well off-the-shelf speech recognition hears older people in a noisy, aged-care-style room."
 requires-python = ">=3.12"
 dependencies = [
+    "faster-whisper>=1.2",
+    "jiwer>=4.0",
     "numpy>=1.26",
     "pydantic>=2.0",
     "pyroomacoustics>=0.10.1",
     "pyyaml>=6.0",
+    "scipy>=1.11",
     "soundfile>=0.12",
+    "tqdm>=4.66",
     "typer>=0.9",
+    "whisper-normalizer>=0.1.15",
 ]
 
 [project.scripts]
@@ -41,6 +46,11 @@ testpaths = ["tests"]
 markers = [
     "slow: needs a real model, dataset, or the network (excluded from default runs)",
 ]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # whisper-normalizer 0.1.15 has an invalid escape in a basic.py docstring; a
+    # fresh install compiles it for the first time and Python raises a SyntaxWarning.
+    "ignore:invalid escape sequence:SyntaxWarning",
+]
 
 [tool.typer.no-pretty]

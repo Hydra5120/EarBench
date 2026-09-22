@@ -9,6 +9,7 @@ import numpy as np
 import typer
 
 from earbench import audio, manifest, noise
+from earbench import sweep as sweep_mod
 from earbench.config import ConfigError, PrepareConfig, SweepConfig, load_config
 
 app = typer.Typer(
@@ -145,9 +146,24 @@ def listen(
 @app.command()
 def sweep(
     config: str = typer.Option(..., "--config", help="Path to sweep YAML config."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Override the run id."),
+    no_progress: bool = typer.Option(False, "--no-progress", help="Hide the progress bar."),
 ) -> None:
-    """Run the noise sweep (not built yet)."""
-    _todo("3")
+    """Run the noise sweep: transcribe every condition and write results."""
+    try:
+        cfg = load_config(config, SweepConfig)
+        result = sweep_mod.run_sweep(cfg, progress=not no_progress, run_id=run_id)
+    except (ConfigError, ValueError, OSError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"run: {result.run_id}")
+    typer.echo(f"results: {result.run_dir / 'results.csv'}")
+    typer.echo(f"summary: {result.run_dir / 'summary.csv'}")
+    for model in cfg.models:
+        model_rows = [row for row in result.summary if row.model == model]
+        if model_rows:
+            worst = max(row.wer for row in model_rows)
+            typer.echo(f"{model}: {len(model_rows)} conditions, worst WER {worst:.1%}")
 
 
 @app.command()
