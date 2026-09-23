@@ -142,8 +142,6 @@ def _noise_at_mic(
     seed = _condition_seed(cfg.seed, condition.clip.clip_id, condition.noise_type)
     key = (condition.noise_type, seed, n_samples)
     if key not in noise_cache:
-        if condition.noise_type not in noise_audio:
-            noise_audio[condition.noise_type] = load_noise(cfg, condition.noise_type)
         noise_file = noise_audio[condition.noise_type]
         noise_cache[key] = noise.noise_at_mic(noise_file, n_samples, seed, cfg.room)
     return noise_cache[key]
@@ -197,10 +195,13 @@ def run_sweep(
     run_dir = cfg.runs_dir / run_id
     clips = select_clips(manifest.read_manifest(cfg.manifest_path), cfg.clips_per_group, cfg.seed)
     conditions = build_grid(cfg, clips)
+    # Load every noise file before any model: a missing file fails now, not hours in.
+    noise_audio: dict[NoiseType, np.ndarray] = {
+        noise_type: load_noise(cfg, noise_type) for noise_type in cfg.noise_files
+    }
     chash = config_hash(cfg)
     factory = transcriber_factory or default_transcriber_factory(cfg)
 
-    noise_audio: dict[NoiseType, np.ndarray] = {}
     speech_cache: dict[tuple[str, float], np.ndarray] = {}
     noise_cache: dict[tuple[NoiseType, int, int], np.ndarray] = {}
     transcribers = {model: factory(model) for model in cfg.models}

@@ -6,6 +6,7 @@ import csv
 from collections import Counter
 
 import numpy as np
+import pytest
 
 from earbench import audio, manifest, noise, sweep
 from earbench.config import ResultRow, SweepConfig
@@ -15,6 +16,21 @@ from earbench.transcribe import CachedTranscriber, FakeTranscriber, Transcriber,
 
 def _fake_factory(text: str = "hello world") -> sweep.TranscriberFactory:
     return lambda model: FakeTranscriber(default_text=text)
+
+
+def test_missing_noise_file_fails_before_any_model_loads(sweep_env) -> None:
+    cfg, _ = sweep_env(n_per_group=1, noise_types=("living", "tv"))
+    cfg.noise_files["tv"][0].unlink()
+    created: list[str] = []
+
+    def factory(model: str) -> Transcriber:
+        created.append(model)
+        return FakeTranscriber()
+
+    with pytest.raises(ValueError, match="not found"):
+        sweep.run_sweep(cfg, factory, progress=False, run_id="missing")
+    assert created == []
+    assert not (cfg.runs_dir / "missing").exists()
 
 
 def test_select_clips_respects_limit_and_seed(sweep_env) -> None:

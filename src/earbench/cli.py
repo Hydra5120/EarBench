@@ -28,12 +28,16 @@ DEMAND_NOISE_FILES = (
 )
 TV_RAW_PATH = Path("data/raw/tv.wav")
 TV_OUT_PATH = Path("data/noise/tv.wav")
+# Third-party loggers that log every HTTP request or every clip at INFO.
+QUIET_LOGGERS = ("httpx", "huggingface_hub", "faster_whisper")
 
 
 @app.callback()
 def _init_logging() -> None:
-    """Send library warnings to the console for every command."""
+    """Send earbench info and library warnings to the console for every command."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 @contextmanager
