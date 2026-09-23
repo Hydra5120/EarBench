@@ -10,7 +10,9 @@ from typer.testing import CliRunner
 
 from earbench.audio import check_wav_16k_mono, save_wav_16k_mono
 from earbench.cli import app
+from earbench.config import SweepConfig
 from earbench.manifest import ManifestRow, write_manifest
+from earbench.sweep import TranscriberFactory
 from earbench.transcribe import FakeTranscriber
 
 runner = CliRunner()
@@ -68,11 +70,11 @@ def test_listen_writes_wav(tmp_path: Path) -> None:
 
 
 def test_sweep_command_runs_offline(monkeypatch, tmp_path: Path, sweep_env) -> None:
-    cfg, _, _ = sweep_env(n_per_group=1)
+    cfg, _ = sweep_env(n_per_group=1)
     cfg_path = tmp_path / "sweep.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg.model_dump(mode="json")), encoding="utf-8")
 
-    def fake_factory(_cfg) -> object:
+    def fake_factory(_cfg: SweepConfig) -> TranscriberFactory:
         return lambda model: FakeTranscriber(default_text="a canned answer")
 
     monkeypatch.setattr("earbench.sweep.default_transcriber_factory", fake_factory)

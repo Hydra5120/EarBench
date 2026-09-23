@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -20,7 +22,7 @@ class PrepareConfig(BaseModel):
     tsv_files: list[str] = ["train.tsv", "dev.tsv", "test.tsv"]
     out_dir: Path = Path("data/clips")
     manifest_path: Path = Path("data/manifest.csv")
-    age_buckets: dict[str, list[str]] = {
+    age_buckets: dict[AgeGroup, list[str]] = {
         "older": ["sixties", "seventies", "eighties", "nineties"],
         "younger": ["twenties", "thirties", "fourties"],
     }
@@ -50,7 +52,7 @@ class SweepConfig(BaseModel):
     manifest_path: Path
     clips_per_group: int | None = None
     distances_m: list[float] = [1.0, 2.0, 3.0]
-    noise_files: dict[str, list[Path]] = Field(default_factory=dict)
+    noise_files: dict[NoiseType, list[Path]] = Field(default_factory=dict)
     snr_db: list[float] = [20.0, 10.0, 5.0, 0.0]
     include_clean: bool = True
     models: list[str] = ["tiny", "base", "small"]
@@ -139,16 +141,26 @@ def load_config[T: BaseModel](path: str | Path, model: type[T]) -> T:
     try:
         return model.model_validate(raw)
     except ValidationError as exc:
-        fields = ", ".join(
-            ".".join(str(part) for part in err["loc"]) if err["loc"] else "<root>"
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in err['loc']) or '<root>'}: {err['msg']}"
             for err in exc.errors()
         )
-        raise ConfigError(
-            f"config file {cfg_path}: invalid {model.__name__} field(s): {fields}: {exc}"
-        ) from exc
+        raise ConfigError(f"config file {cfg_path}: invalid {model.__name__}: {problems}") from exc
 
 
 def config_hash(config: BaseModel) -> str:
     """Short ID string for a config, stamped on every result row."""
     payload = config.model_dump_json()
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def write_csv(model: type[BaseModel], rows: Sequence[BaseModel], path: str | Path) -> Path:
+    """Write rows to CSV with columns in `model`'s field order."""
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(model.model_fields))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row.model_dump())
+    return out_path

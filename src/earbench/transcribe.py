@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from earbench.audio import SAMPLE_RATE_HZ, resample_to_16k
+from earbench.audio import SAMPLE_RATE_HZ
 
 
 class Transcriber(Protocol):
@@ -73,12 +73,13 @@ class CachedTranscriber:
         self.settings = inner.settings
 
     def _key(self, audio: np.ndarray, sample_rate: int) -> str:
-        digest = hashlib.sha256()
-        digest.update(audio_key(audio, sample_rate).encode("ascii"))
-        digest.update(self.inner.name.encode("utf-8"))
-        digest.update(self.inner.version.encode("utf-8"))
-        digest.update(self.inner.settings.encode("utf-8"))
-        return digest.hexdigest()
+        parts = (
+            audio_key(audio, sample_rate),
+            self.inner.name,
+            self.inner.version,
+            self.inner.settings,
+        )
+        return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         path = self.cache_dir / f"{self._key(audio, sample_rate)}.txt"
@@ -89,11 +90,7 @@ class CachedTranscriber:
         return text
 
     def _store(self, path: Path, text: str) -> None:
-        """Write the entry atomically: temp file in the same folder, then os.replace.
-
-        A crash mid-write leaves a `.tmp` file that is never read as a cache hit,
-        so a partial entry can never masquerade as a finished transcription.
-        """
+        """Write atomically (temp file + os.replace), so a crash never leaves a fake hit."""
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         handle_fd, tmp_name = tempfile.mkstemp(
             dir=self.cache_dir, prefix=f".{path.name}.", suffix=".tmp"
@@ -125,7 +122,6 @@ class FasterWhisperTranscriber:
     ) -> None:
         from faster_whisper import WhisperModel  # heavy import, only when a real model runs
 
-        self.model_size = model_size
         self.language = language
         self.beam_size = beam_size
         self.vad_filter = vad_filter
@@ -138,11 +134,10 @@ class FasterWhisperTranscriber:
         self._model: Any = WhisperModel(model_size, device=device, compute_type=compute_type)
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
-        samples = np.asarray(audio, dtype=np.float32).reshape(-1)
         if sample_rate != SAMPLE_RATE_HZ:
-            samples = resample_to_16k(samples, sample_rate)
+            raise ValueError(f"expected {SAMPLE_RATE_HZ} Hz audio, got {sample_rate} Hz")
         segments, _info = self._model.transcribe(
-            samples,
+            np.asarray(audio, dtype=np.float32),
             language=self.language,
             beam_size=self.beam_size,
             vad_filter=self.vad_filter,

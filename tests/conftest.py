@@ -2,28 +2,15 @@
 
 from __future__ import annotations
 
-import wave
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from earbench.config import SweepConfig
+from earbench.audio import SAMPLE_RATE_HZ, save_wav_16k_mono
+from earbench.config import AgeGroup, NoiseType, SweepConfig
 from earbench.manifest import ManifestRow, write_manifest
-
-SAMPLE_RATE_HZ = 16_000
-
-
-@pytest.fixture
-def sample_rate_hz() -> int:
-    """Internal sample rate: 16 kHz mono."""
-    return SAMPLE_RATE_HZ
-
-
-@pytest.fixture
-def silence_mono() -> np.ndarray:
-    """1 s of silence as float32 mono."""
-    return np.zeros(SAMPLE_RATE_HZ, dtype=np.float32)
 
 
 @pytest.fixture
@@ -33,57 +20,36 @@ def tone_mono() -> np.ndarray:
     return (0.5 * np.sin(2.0 * np.pi * 440.0 * t)).astype(np.float32)
 
 
-@pytest.fixture
-def noise_mono() -> np.ndarray:
-    """1 s of seeded white noise at ~0.1 RMS, float32 mono."""
-    rng = np.random.default_rng(0)
-    x = rng.standard_normal(SAMPLE_RATE_HZ).astype(np.float64)
-    x *= 0.1 / float(np.sqrt(np.mean(x**2)))
-    return x.astype(np.float32)
-
-
-def write_wav_mono(path: Path, audio: np.ndarray, sample_rate_hz: int = SAMPLE_RATE_HZ) -> Path:
-    """Save mono float32 audio as a 16-bit WAV file."""
-    clipped = np.clip(audio, -1.0, 1.0)
-    frames = (clipped * 32767.0).astype(np.int16)
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate_hz)
-        wf.writeframes(frames.tobytes())
-    return path
-
-
 def _write_tone(path: Path, duration_s: float, freq_hz: float) -> Path:
     """A short tone burst, enough to stand in for a speech clip."""
-    path.parent.mkdir(parents=True, exist_ok=True)
     t = np.arange(int(duration_s * SAMPLE_RATE_HZ), dtype=np.float64) / SAMPLE_RATE_HZ
-    return write_wav_mono(path, (0.4 * np.sin(2.0 * np.pi * freq_hz * t)).astype(np.float32))
+    return save_wav_16k_mono(path, 0.4 * np.sin(2.0 * np.pi * freq_hz * t))
 
 
 @pytest.fixture
-def sweep_env(tmp_path: Path):
+def sweep_env(tmp_path: Path) -> Callable[..., tuple[SweepConfig, list[ManifestRow]]]:
     """Build a tiny, offline sweep: synthetic clips, a manifest and one noise file.
 
-    Returns a `make(...)` that yields `(SweepConfig, rows, manifest_path)` with all
-    paths under `tmp_path`, so runs are isolated and reproducible.
+    Returns a `make(...)` that yields `(SweepConfig, rows)` with all paths under
+    `tmp_path`, so runs are isolated and reproducible.
     """
 
     def _make(
         n_per_group: int = 2,
         duration_s: float = 0.6,
         include_clean: bool = True,
-        noise_types: tuple[str, ...] = ("living",),
+        noise_types: tuple[NoiseType, ...] = ("living",),
         snr_db: tuple[float, ...] = (10.0,),
         distances_m: tuple[float, ...] = (1.0,),
         models: tuple[str, ...] = ("tiny",),
         clips_per_group: int | None = None,
-    ) -> tuple[SweepConfig, list[ManifestRow], Path]:
+    ) -> tuple[SweepConfig, list[ManifestRow]]:
         rows: list[ManifestRow] = []
-        for group, bucket, base_freq_hz in (
+        groups: tuple[tuple[AgeGroup, str, float], ...] = (
             ("older", "sixties", 300.0),
             ("younger", "twenties", 700.0),
-        ):
+        )
+        for group, bucket, base_freq_hz in groups:
             for index in range(n_per_group):
                 clip_id = f"{group}_{index}"
                 wav_path = _write_tone(
@@ -106,12 +72,11 @@ def sweep_env(tmp_path: Path):
         manifest_path = tmp_path / "manifest.csv"
         write_manifest(rows, manifest_path)
 
-        noise_files: dict[str, list[Path]] = {}
+        noise_files: dict[NoiseType, list[Path]] = {}
         for noise_type in noise_types:
-            noise_path = tmp_path / f"{noise_type}.wav"
             rng = np.random.default_rng(0)
-            write_wav_mono(
-                noise_path, (0.2 * rng.standard_normal(5 * SAMPLE_RATE_HZ)).astype(np.float32)
+            noise_path = save_wav_16k_mono(
+                tmp_path / f"{noise_type}.wav", 0.2 * rng.standard_normal(5 * SAMPLE_RATE_HZ)
             )
             noise_files[noise_type] = [noise_path]
 
@@ -127,6 +92,6 @@ def sweep_env(tmp_path: Path):
             cache_dir=tmp_path / "cache",
             runs_dir=tmp_path / "runs",
         )
-        return cfg, rows, manifest_path
+        return cfg, rows
 
     return _make

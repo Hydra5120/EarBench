@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import logging
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,7 +14,7 @@ import numpy as np
 from pydantic import BaseModel
 
 from earbench import audio
-from earbench.config import PrepareConfig
+from earbench.config import AgeGroup, PrepareConfig, write_csv
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class ManifestRow(BaseModel):
     wav_path: str
     sentence: str
     age_bucket: str
-    age_group: str
+    age_group: AgeGroup
     gender: str
     duration_s: float
     speaker_hash: str
@@ -66,7 +67,7 @@ class CandidateClip:
     mp3_path: Path
     sentence: str
     age_bucket: str
-    age_group: str
+    age_group: AgeGroup
     gender: str  # "female", "male" or "unknown"
 
 
@@ -74,9 +75,10 @@ class CandidateClip:
 class SpeakerPlan:
     """Deterministic walk order plus per-gender clip quotas for each group."""
 
-    try_lists: dict[str, list[str]] = field(default_factory=dict)
-    quotas: dict[str, dict[str, int]] = field(default_factory=dict)
-    reference_group: str = ""  # group others mirror; "" = every group wants clips_per_group
+    try_lists: dict[AgeGroup, list[str]] = field(default_factory=dict)
+    quotas: dict[AgeGroup, dict[str, int]] = field(default_factory=dict)
+    # The group the others mirror; None means every group wants clips_per_group.
+    reference_group: AgeGroup | None = None
 
 
 def speaker_hash(client_id: str) -> str:
@@ -94,14 +96,12 @@ def normalise_gender(value: str) -> str:
     return "unknown"
 
 
-def _parse_int(value: str, default: int = 0) -> int:
-    text = value.strip()
-    if not text:
-        return default
+def _parse_int(value: str) -> int:
+    """Vote count from a TSV cell; blank or non-numeric counts as 0."""
     try:
-        return int(text)
+        return int(value)
     except ValueError:
-        return default
+        return 0
 
 
 def load_candidates(cv_dir: str | Path, cfg: PrepareConfig) -> tuple[list[CandidateClip], int]:
@@ -111,7 +111,7 @@ def load_candidates(cv_dir: str | Path, cfg: PrepareConfig) -> tuple[list[Candid
     with a logged warning and counted, never an error.
     """
     root = Path(cv_dir)
-    bucket_to_group = {
+    bucket_to_group: dict[str, AgeGroup] = {
         bucket: group for group, buckets in cfg.age_buckets.items() for bucket in buckets
     }
     candidates: list[CandidateClip] = []
@@ -127,14 +127,14 @@ def load_candidates(cv_dir: str | Path, cfg: PrepareConfig) -> tuple[list[Candid
                 missing = sorted(REQUIRED_COLUMNS - set(reader.fieldnames or []))
                 raise ValueError(f"{tsv_path}: missing column(s): {', '.join(missing)}")
             for row in reader:
-                age_bucket = (row["age"] or "").strip()
+                age_bucket = row["age"].strip()
                 if age_bucket not in bucket_to_group:
                     continue
                 if _parse_int(row["up_votes"]) < cfg.min_up_votes:
                     continue
                 if _parse_int(row["down_votes"]) > cfg.max_down_votes:
                     continue
-                clip_name = (row["path"] or "").strip()
+                clip_name = row["path"].strip()
                 if not clip_name or clip_name in seen_paths:
                     continue
                 seen_paths.add(clip_name)
@@ -145,12 +145,12 @@ def load_candidates(cv_dir: str | Path, cfg: PrepareConfig) -> tuple[list[Candid
                     continue
                 candidates.append(
                     CandidateClip(
-                        client_id=(row["client_id"] or "").strip(),
+                        client_id=row["client_id"].strip(),
                         mp3_path=mp3_path,
-                        sentence=(row["sentence"] or "").strip(),
+                        sentence=row["sentence"].strip(),
                         age_bucket=age_bucket,
                         age_group=bucket_to_group[age_bucket],
-                        gender=normalise_gender(row["gender"] or ""),
+                        gender=normalise_gender(row["gender"]),
                     )
                 )
     return candidates, missing_mp3
@@ -177,12 +177,9 @@ def plan_speaker_order(candidates: list[CandidateClip], cfg: PrepareConfig) -> S
     are excluded. With match_gender=False all speakers are pooled in one
     seeded shuffle.
     """
-    groups = list(cfg.age_buckets)
     plan = SpeakerPlan()
-    if not groups:
-        return plan
 
-    def _shuffled(group: str, gender: str, stream: int) -> list[str]:
+    def _shuffled(group: AgeGroup, gender: str, stream: int) -> list[str]:
         ids = sorted(
             {
                 clip.client_id
@@ -194,7 +191,7 @@ def plan_speaker_order(candidates: list[CandidateClip], cfg: PrepareConfig) -> S
         return ids
 
     if cfg.match_gender:
-        ref = "older" if "older" in groups else groups[0]
+        ref: AgeGroup = "older"
         plan.reference_group = ref
         ref_female = _shuffled(ref, "female", 0)
         ref_male = _shuffled(ref, "male", 1)
@@ -204,7 +201,7 @@ def plan_speaker_order(candidates: list[CandidateClip], cfg: PrepareConfig) -> S
             "female": n_female_ref,
             "male": min(len(ref_male), cfg.clips_per_group - n_female_ref),
         }
-        for group in groups:
+        for group in cfg.age_buckets:
             if group == ref:
                 continue
             female = _shuffled(group, "female", 2)
@@ -215,7 +212,7 @@ def plan_speaker_order(candidates: list[CandidateClip], cfg: PrepareConfig) -> S
                 "male": min(len(male), plan.quotas[ref]["male"]),
             }
     else:
-        for group in groups:
+        for group in cfg.age_buckets:
             pooled = sorted({clip.client_id for clip in candidates if clip.age_group == group})
             _spawn(cfg.seed, 4).shuffle(pooled)
             plan.try_lists[group] = pooled
@@ -228,23 +225,20 @@ def run_prepare(
 ) -> PrepareSummary:
     """Select clips, decode them to 16 kHz mono WAV, write the manifest."""
     candidates, missing_mp3 = load_candidates(cfg.cv_dir, cfg)
-    available_per_bucket: dict[str, int] = {}
-    for clip in candidates:
-        available_per_bucket[clip.age_bucket] = available_per_bucket.get(clip.age_bucket, 0) + 1
+    available_per_bucket = dict(Counter(clip.age_bucket for clip in candidates))
     by_speaker: dict[str, list[CandidateClip]] = {}
     for clip in candidates:
         by_speaker.setdefault(clip.client_id, []).append(clip)
     plan = plan_speaker_order(candidates, cfg)
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
-    if cfg.manifest_path.parent != Path():
-        cfg.manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
     summary = PrepareSummary(missing_mp3=missing_mp3, available_per_bucket=available_per_bucket)
     rows: list[ManifestRow] = []
     decoded = 0
     for group in cfg.age_buckets:
         quota = plan.quotas.get(group, {})
-        taken: dict[str, int] = {key: 0 for key in quota}
+        taken: Counter[str] = Counter()
+        genders: Counter[str] = Counter()
         speakers_used: set[str] = set()
         for client_id in plan.try_lists.get(group, []):
             if all(taken[key] >= quota[key] for key in quota):
@@ -253,11 +247,11 @@ def run_prepare(
             _speaker_rng(cfg.seed, client_id).shuffle(clips)
             accepted = 0
             for clip in clips:
-                slot = clip.gender if clip.gender in quota else "all"
-                if slot not in quota or taken[slot] >= quota[slot]:
-                    continue
                 if accepted >= cfg.max_clips_per_speaker:
                     break
+                slot = "all" if "all" in quota else clip.gender
+                if taken[slot] >= quota.get(slot, 0):
+                    continue
                 dst = cfg.out_dir / f"{clip.mp3_path.stem}.wav"
                 try:
                     duration_s = decode_clip(clip.mp3_path, dst)
@@ -285,26 +279,19 @@ def run_prepare(
                     )
                 )
                 taken[slot] += 1
+                genders[clip.gender] += 1
                 accepted += 1
                 speakers_used.add(client_id)
         summary.selected_per_group[group] = sum(taken.values())
         summary.speakers_per_group[group] = len(speakers_used)
-        summary.female_per_group[group] = sum(
-            1 for row in rows if row.age_group == group and row.gender == "female"
-        )
-        summary.male_per_group[group] = sum(
-            1 for row in rows if row.age_group == group and row.gender == "male"
-        )
-        wanted = (
-            cfg.clips_per_group
-            if group == plan.reference_group or not plan.reference_group
-            else sum(quota.values())
-        )
+        summary.female_per_group[group] = genders["female"]
+        summary.male_per_group[group] = genders["male"]
+        mirrors_reference = plan.reference_group not in (None, group)
+        wanted = sum(quota.values()) if mirrors_reference else cfg.clips_per_group
         if summary.selected_per_group[group] < wanted:
             parts = " + ".join(f"{quota[key]} {key}" for key in quota)
-            want_word = "clip" if wanted == 1 else "clips"
             summary.shortfalls.append(
-                f"{group}: wanted {wanted} {want_word} ({parts}), "
+                f"{group}: wanted {wanted} clips ({parts}), "
                 f"selected {summary.selected_per_group[group]}"
             )
     rows.sort(key=lambda row: (row.age_group, row.clip_id))
@@ -314,26 +301,8 @@ def run_prepare(
 
 
 def write_manifest(rows: list[ManifestRow], path: str | Path) -> Path:
-    """Write manifest rows to CSV with the exact Phase 1 column order."""
-    out_path = Path(path)
-    if out_path.parent != Path():
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-    columns = [
-        "clip_id",
-        "wav_path",
-        "sentence",
-        "age_bucket",
-        "age_group",
-        "gender",
-        "duration_s",
-        "speaker_hash",
-    ]
-    with open(out_path, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row.model_dump())
-    return out_path
+    """Write manifest rows to CSV in ManifestRow field order (the Phase 1 columns)."""
+    return write_csv(ManifestRow, rows, path)
 
 
 def read_manifest(path: str | Path) -> list[ManifestRow]:

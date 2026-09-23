@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 
 from earbench import room
+from earbench.audio import SAMPLE_RATE_HZ
 from earbench.config import RoomConfig
 
-SAMPLE_RATE_HZ = 16_000
 SPEED_OF_SOUND_M_S = 343.0
 
 

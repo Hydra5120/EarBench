@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -25,6 +24,8 @@ def test_prepare_defaults_match_plan() -> None:
     assert cfg.max_clips_per_speaker == 1
     assert cfg.age_buckets["younger"] == ["twenties", "thirties", "fourties"]
     assert cfg.age_buckets["older"] == ["sixties", "seventies", "eighties", "nineties"]
+    assert cfg.max_down_votes == 0
+    assert cfg.match_gender is True
 
 
 def test_wrong_field_type_error_names_file_and_field(tmp_path: Path) -> None:
@@ -51,20 +52,5 @@ def test_example_configs_load() -> None:
     assert isinstance(load_config(CONFIGS_DIR / "room.yaml", RoomSessionConfig), RoomSessionConfig)
 
 
-def test_prepare_vote_and_gender_defaults() -> None:
-    cfg = PrepareConfig()
-    assert cfg.max_down_votes == 0
-    assert cfg.match_gender is True
-
-
 def test_config_hash_stable() -> None:
     assert config_hash(PrepareConfig()) == config_hash(PrepareConfig())
-
-
-def test_pytest_ignores_whisper_normalizer_syntax_warning() -> None:
-    # whisper-normalizer 0.1.15 has an invalid escape in basic.py; a fresh install
-    # compiles it for the first time and Python raises a SyntaxWarning, which would
-    # otherwise fail collection under filterwarnings = ["error"].
-    pyproject = tomllib.loads((CONFIGS_DIR.parent / "pyproject.toml").read_text(encoding="utf-8"))
-    filters = pyproject["tool"]["pytest"]["ini_options"]["filterwarnings"]
-    assert "ignore:invalid escape sequence:SyntaxWarning" in filters

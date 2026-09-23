@@ -41,11 +41,6 @@ def mix(speech_at_mic: np.ndarray, noise_at_mic: np.ndarray, snr_db: float) -> n
     return speech_at_mic + scaled_noise
 
 
-def speech_at_mic(clip: np.ndarray, distance_m: float, room: RoomConfig) -> np.ndarray:
-    """The clip as heard by the mic, after room simulation."""
-    return room_sim.simulate(clip, distance_m, room)
-
-
 def noise_at_mic(noise_file: np.ndarray, n_samples: int, seed: int, room: RoomConfig) -> np.ndarray:
     """A seeded noise segment as heard by the mic, trimmed to `n_samples`."""
     segment = pick_segment(noise_file, n_samples, seed)
@@ -64,7 +59,7 @@ def make_condition(
 
     Returns (mixed, speech_at_mic). With no noise, mixed is just speech_at_mic.
     """
-    speech = speech_at_mic(clip, distance_m, room)
+    speech = room_sim.simulate(clip, distance_m, room)
     if noise_file is None or snr_db is None:
-        return speech.copy(), speech
+        return speech, speech
     return mix(speech, noise_at_mic(noise_file, speech.shape[0], seed, room), snr_db), speech

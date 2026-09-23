@@ -6,10 +6,9 @@ import numpy as np
 import pytest
 
 from earbench import noise
-from earbench.audio import active_speech_power, power
+from earbench.audio import SAMPLE_RATE_HZ, active_speech_power, power
 from earbench.config import RoomConfig
 
-SAMPLE_RATE_HZ = 16_000
 TARGETS_DB = [-5.0, 0.0, 5.0, 10.0, 20.0, 30.0]
 
 

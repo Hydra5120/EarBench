@@ -311,37 +311,18 @@ def test_prepare_cli_writes_manifest_with_real_mp3(tmp_path: Path) -> None:
 
     from earbench.cli import app
 
-    clips_dir = tmp_path / "cv" / "clips"
-    clips_dir.mkdir(parents=True)
-    tone = 0.5 * np.sin(
-        2.0 * np.pi * 440.0 * np.arange(5 * 16_000, dtype=np.float64) / 16_000
-    ).astype(np.float32)
-    sf.write(str(clips_dir / "a.mp3"), tone, 16_000, format="MP3")
-    with open(tmp_path / "cv" / "train.tsv", "w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle, delimiter="\t", quoting=csv.QUOTE_NONE)
-        writer.writerow(CV_HEADER)
-        writer.writerow(
-            [
-                "spk1",
-                "a.mp3",
-                "sent01",
-                "hello world today",
-                "",
-                3,
-                0,
-                "sixties",
-                "male_masculine",
-                "Australian English",
-                "",
-                "en",
-                "",
-            ]
-        )
+    cv_dir = _write_fake_cv(
+        tmp_path,
+        {"train.tsv": [("spk1", "a.mp3", "hello world today", 3, 0, "sixties", "male_masculine")]},
+    )
+    t = np.arange(5 * audio.SAMPLE_RATE_HZ, dtype=np.float64) / audio.SAMPLE_RATE_HZ
+    tone = (0.5 * np.sin(2.0 * np.pi * 440.0 * t)).astype(np.float32)
+    sf.write(str(cv_dir / "clips" / "a.mp3"), tone, audio.SAMPLE_RATE_HZ, format="MP3")
     cfg_path = tmp_path / "prepare.yaml"
     cfg_path.write_text(
         "\n".join(
             [
-                f"cv_dir: {tmp_path / 'cv'}",
+                f"cv_dir: {cv_dir}",
                 "tsv_files: [train.tsv]",
                 f"out_dir: {tmp_path / 'clips'}",
                 f"manifest_path: {tmp_path / 'manifest.csv'}",

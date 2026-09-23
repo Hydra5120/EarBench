@@ -31,17 +31,15 @@ def resample_to_16k(audio: np.ndarray, sample_rate_hz: int) -> np.ndarray:
     mono = np.asarray(audio, dtype=np.float32).reshape(-1)
     if sample_rate_hz == SAMPLE_RATE_HZ:
         return mono.copy()
-    if sample_rate_hz <= 0:
-        raise ValueError(f"invalid sample rate: {sample_rate_hz}")
-    divisor = math.gcd(int(sample_rate_hz), SAMPLE_RATE_HZ)
-    up = SAMPLE_RATE_HZ // divisor
-    down = int(sample_rate_hz) // divisor
-    return resample_poly(mono, up, down).astype(np.float32)
+    divisor = math.gcd(sample_rate_hz, SAMPLE_RATE_HZ)
+    return resample_poly(mono, SAMPLE_RATE_HZ // divisor, sample_rate_hz // divisor).astype(
+        np.float32
+    )
 
 
-def measure_duration_s(n_samples: int, sample_rate_hz: int) -> float:
-    """Return the duration in seconds of a sample count at a sample rate."""
-    return n_samples / sample_rate_hz
+def load_16k(path: str | Path) -> np.ndarray:
+    """Load any soundfile-readable audio as 16 kHz mono float32."""
+    return resample_to_16k(*load_mono(path))
 
 
 def save_wav_16k_mono(path: str | Path, audio: np.ndarray) -> Path:
@@ -60,11 +58,9 @@ def save_wav_16k_mono(path: str | Path, audio: np.ndarray) -> Path:
 
 def decode_clip_to_wav(src: str | Path, dst: str | Path) -> float:
     """Decode a clip (MP3/WAV) to 16 kHz mono WAV. Returns duration_s."""
-    src_path, dst_path = Path(src), Path(dst)
-    mono, sample_rate_hz = load_mono(src_path)
-    converted = resample_to_16k(mono, sample_rate_hz)
-    save_wav_16k_mono(dst_path, converted)
-    return measure_duration_s(converted.shape[0], SAMPLE_RATE_HZ)
+    converted = load_16k(src)
+    save_wav_16k_mono(dst, converted)
+    return converted.shape[0] / SAMPLE_RATE_HZ
 
 
 def check_wav_16k_mono(path: str | Path) -> list[str]:

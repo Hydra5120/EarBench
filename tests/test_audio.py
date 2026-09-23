@@ -10,8 +10,7 @@ import pytest
 import soundfile as sf
 
 from earbench import audio
-
-SAMPLE_RATE_HZ = 16_000
+from earbench.audio import SAMPLE_RATE_HZ
 
 
 def _sine(freq_hz: float, duration_s: float, sample_rate_hz: int) -> np.ndarray:
