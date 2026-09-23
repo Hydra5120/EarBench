@@ -152,11 +152,7 @@ def sweep(
     typer.echo(f"run: {result.run_id}")
     typer.echo(f"results: {result.run_dir / 'results.csv'}")
     typer.echo(f"summary: {result.run_dir / 'summary.csv'}")
-    for model in cfg.models:
-        model_rows = [row for row in result.summary if row.model == model]
-        if model_rows:
-            worst = max(row.wer for row in model_rows)
-            typer.echo(f"{model}: {len(model_rows)} conditions, worst WER {worst:.1%}")
+    typer.echo(f"conditions: {len(result.summary)} ({len(result.rows)} transcriptions)")
 
 
 @app.command()
