@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import os
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from importlib.metadata import version as package_version
@@ -104,8 +106,22 @@ class CachedTranscriber:
             raise
 
 
+def add_nvidia_dlls_to_path() -> None:
+    """On Windows, put the pip-installed CUDA DLLs (the `gpu` extra) on PATH.
+
+    CTranslate2 finds cuBLAS/cuDNN through PATH; `os.add_dll_directory` is not enough.
+    """
+    spec = importlib.util.find_spec("nvidia")
+    if sys.platform != "win32" or spec is None or spec.submodule_search_locations is None:
+        return
+    for root in spec.submodule_search_locations:
+        for bin_dir in sorted(Path(root).glob("*/bin")):
+            if str(bin_dir) not in os.environ["PATH"].split(os.pathsep):
+                os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ['PATH']}"
+
+
 class FasterWhisperTranscriber:
-    """faster-whisper. The model is loaded lazily on first use."""
+    """faster-whisper. The package is imported only when a real model is built."""
 
     name = "faster-whisper"
 
@@ -122,6 +138,8 @@ class FasterWhisperTranscriber:
     ) -> None:
         from faster_whisper import WhisperModel  # heavy import, only when a real model runs
 
+        if device.startswith("cuda"):
+            add_nvidia_dlls_to_path()
         self.language = language
         self.beam_size = beam_size
         self.vad_filter = vad_filter

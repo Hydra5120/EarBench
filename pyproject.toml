@@ -20,6 +20,12 @@ dependencies = [
 [project.scripts]
 earbench = "earbench.cli:app"
 
+[project.optional-dependencies]
+gpu = [
+    "nvidia-cublas-cu12>=12,<13 ; sys_platform != 'darwin'",
+    "nvidia-cudnn-cu12>=9,<10 ; sys_platform != 'darwin'",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

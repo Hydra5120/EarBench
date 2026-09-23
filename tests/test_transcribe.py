@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -91,3 +92,25 @@ def test_leftover_temp_file_is_not_a_cache_hit(tmp_path: Path, tone_mono: np.nda
     cached = CachedTranscriber(inner, cache)
     assert cached.transcribe(tone_mono, SAMPLE_RATE_HZ) == "fresh result"
     assert inner.calls == 1
+
+
+def test_add_nvidia_dlls_to_path_on_windows(monkeypatch, tmp_path: Path) -> None:
+    from importlib.machinery import ModuleSpec
+
+    from earbench import transcribe
+
+    (tmp_path / "cublas" / "bin").mkdir(parents=True)
+    (tmp_path / "cudnn" / "bin").mkdir(parents=True)
+    spec = ModuleSpec("nvidia", None, is_package=True)
+    spec.submodule_search_locations = [str(tmp_path)]
+    monkeypatch.setattr(transcribe.importlib.util, "find_spec", lambda name: spec)
+    monkeypatch.setattr(transcribe.sys, "platform", "win32")
+    monkeypatch.setenv("PATH", "existing-dir")
+
+    transcribe.add_nvidia_dlls_to_path()
+    transcribe.add_nvidia_dlls_to_path()  # a second call adds nothing
+
+    parts = os.environ["PATH"].split(os.pathsep)
+    assert parts.count(str(tmp_path / "cublas" / "bin")) == 1
+    assert parts.count(str(tmp_path / "cudnn" / "bin")) == 1
+    assert parts[-1] == "existing-dir"

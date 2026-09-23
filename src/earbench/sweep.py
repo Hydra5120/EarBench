@@ -108,10 +108,13 @@ def _new_run_id(cfg: SweepConfig) -> str:
 
 
 def default_transcriber_factory(cfg: SweepConfig) -> TranscriberFactory:
-    """One cached faster-whisper transcriber per model size."""
+    """One cached faster-whisper transcriber per model size, on the config's device."""
 
     def factory(model_size: str) -> Transcriber:
-        return CachedTranscriber(FasterWhisperTranscriber(model_size), cfg.cache_dir)
+        model = FasterWhisperTranscriber(
+            model_size, device=cfg.device, compute_type=cfg.compute_type
+        )
+        return CachedTranscriber(model, cfg.cache_dir)
 
     return factory
 
