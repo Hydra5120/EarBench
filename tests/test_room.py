@@ -71,3 +71,18 @@ def test_simulate_noise_runs() -> None:
     out = room.simulate_noise(noise_sig, RoomConfig())
     assert out.dtype == np.float32
     assert out.shape[0] >= noise_sig.shape[0]
+
+
+def test_simulate_at_matches_plus_x_position() -> None:
+    """An explicit position on the +x axis sounds exactly like `simulate` there."""
+    clip = np.random.default_rng(2).standard_normal(4000).astype(np.float32)
+    cfg = RoomConfig()
+    expected = room.simulate(clip, 2.0, cfg)
+    np.testing.assert_array_equal(
+        room.simulate_at(clip, room.speaker_position(2.0, cfg), cfg), expected
+    )
+
+
+def test_simulate_at_outside_room_raises() -> None:
+    with pytest.raises(ValueError, match="outside the room"):
+        room.simulate_at(_impulse(), (9.0, 1.0, 1.0), RoomConfig())

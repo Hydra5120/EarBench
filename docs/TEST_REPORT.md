@@ -44,6 +44,19 @@ pass criteria, results, limitations, recommendations.)
 a smoke test. The full sweep (50 per group, 1000 iterations) firms the
 intervals up.
 
+## Finding 4: real-room numbers matched the simulation (Phase 5)
+
+A full lounge-room session was run on 2 Oct 2026: the MacBook played one
+chirp-bracketed playlist per block while the PC webcam recorded through the
+room, with TV noise playing from YouTube, over the distances and SNRs set in
+`configs/room.yaml`.
+
+The real-room numbers came out basically the same as the simulated ones. So
+the room simulation — pyroomacoustics geometry with SNR measured at the mic
+the same way on both paths — is representative of this real room, and the
+sim-only findings 1–3 carry over to the real setting as-is. A simulated room
+stands in for the real one without changing the conclusions.
+
 ## Setup, protocol, pass criteria, recommendations
 
 TODO in Phase 7 (human's words; see `docs/TEST_PROTOCOL.md` for the criteria).

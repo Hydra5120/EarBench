@@ -77,18 +77,23 @@ class SweepConfig(BaseModel):
 
 
 class RoomSessionConfig(BaseModel):
-    """Settings for a real-room recording session."""
+    """Settings for a real-room recording session.
+
+    Two devices: the MacBook plays the playlists, the PC records them. The PC
+    records at the input device's native sample rate (`sample_rate` is only
+    the fallback when the device won't report one).
+    """
 
     manifest_path: Path
     clips_per_group: int = 15
     distances_m: list[float] = [1.0, 2.0, 3.0]
     conditions: list[Literal["quiet", "tv"]] = ["quiet", "tv"]
     lead_in_s: float = 1.5
-    tail_s: float = 1.0
     sample_rate: int = 48_000
-    output_device: str | int | None = None
     input_device: str | int | None = None
     model: str = "small"
+    recordings_dir: Path = Path("recordings")
+    playlists_dir: Path = Path("playlists")
     seed: int = 0
 
 

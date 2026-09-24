@@ -12,9 +12,16 @@ import numpy as np
 import typer
 
 from earbench import audio, manifest, noise
+from earbench import record as record_mod
 from earbench import report as report_mod
 from earbench import sweep as sweep_mod
-from earbench.config import NoiseType, PrepareConfig, SweepConfig, load_config
+from earbench.config import (
+    NoiseType,
+    PrepareConfig,
+    RoomSessionConfig,
+    SweepConfig,
+    load_config,
+)
 
 app = typer.Typer(
     name="earbench",
@@ -192,18 +199,63 @@ def report(
     typer.echo(f"report: {out_dir / 'report.html'}")
 
 
+@app.command(name="make-playlist")
+def make_playlist(
+    config: str = typer.Option(..., "--config", help="Path to room session YAML config."),
+) -> None:
+    """Write one playlist WAV + timing CSV per block, plus calibration.wav."""
+    with _exit_on_error():
+        cfg = load_config(config, RoomSessionConfig)
+        built = record_mod.make_playlist(cfg)
+    for playlist in built:
+        typer.echo(f"playlist: {playlist.wav_path} ({len(playlist.rows)} clips)")
+    typer.echo(f"calibration: {Path(cfg.playlists_dir) / record_mod.CALIBRATION_FILENAME}")
+
+
 @app.command()
 def record(
     config: str = typer.Option(..., "--config", help="Path to room session YAML config."),
+    session_id: str | None = typer.Option(
+        None, "--session-id", help="Reuse a session (retakes get the next take number)."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Align a synthetic recording without touching audio."
+    ),
 ) -> None:
-    """Play + record audio in a real room (not built yet)."""
-    _todo("5")
+    """Record the mic while the MacBook plays each block's playlist. You type every measurement."""
+    with _exit_on_error():
+        cfg = load_config(config, RoomSessionConfig)
+        backend = record_mod.make_backend(cfg)
+        session_dir = record_mod.run_session(
+            cfg, session_id=session_id, backend=backend, dry_run=dry_run
+        )
+    typer.echo(f"session: {session_dir}")
 
 
 @app.command(name="score-room")
-def score_room(session_id: str = typer.Argument(..., help="Session id under recordings/.")) -> None:
-    """Score real recordings (not built yet)."""
-    _todo("5")
+def score_room(
+    session: str = typer.Argument(..., help="Session dir or id under recordings/."),
+) -> None:
+    """Transcribe and score a real-room session into room-source result rows."""
+    with _exit_on_error():
+        session_dir = record_mod.resolve_session_dir(session)
+        rows = record_mod.score_session(session_dir)
+    typer.echo(f"results: {session_dir / 'results.csv'} ({len(rows)} takes)")
+
+
+@app.command(name="compare-room")
+def compare_room(
+    session: str = typer.Argument(..., help="Session dir or id under recordings/."),
+    config: str = typer.Option(..., "--config", help="Sweep YAML config (noise, fallback room)."),
+) -> None:
+    """Simulate each real take's condition and plot real vs simulated WER."""
+    with _exit_on_error():
+        sweep_cfg = load_config(config, SweepConfig)
+        session_dir = record_mod.resolve_session_dir(session)
+        _paired, note = record_mod.compare_session(session_dir, sweep_cfg)
+    typer.echo(f"compare: {session_dir / 'compare.csv'}")
+    if note:
+        typer.echo(note)
 
 
 if __name__ == "__main__":

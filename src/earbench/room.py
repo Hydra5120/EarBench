@@ -49,6 +49,12 @@ def simulate(clip: np.ndarray, distance_m: float, room: RoomConfig) -> np.ndarra
     return _run(clip, source_m, room)
 
 
+def simulate_at(signal: np.ndarray, source_m: Position, room: RoomConfig) -> np.ndarray:
+    """Signal as heard by the mic from an explicit `source_m` position in the room."""
+    _check_inside(source_m, room, "voice source")
+    return _run(signal, source_m, room)
+
+
 def simulate_noise(noise: np.ndarray, room: RoomConfig) -> np.ndarray:
     """Noise as heard by the mic, played from `room.noise_pos_m`."""
     _check_inside(room.noise_pos_m, room, "noise source")

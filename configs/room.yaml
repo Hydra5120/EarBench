@@ -1,12 +1,11 @@
-# Real-room recording session for `earbench record` (Phase 5).
+# Real-room recording session for `earbench make-playlist` + `earbench record`
+# (Phase 5, two-device setup: the MacBook plays the playlists, the PC records).
 manifest_path: data/manifest.csv
 clips_per_group: 15
 distances_m: [1.0, 2.0, 3.0]
 conditions: [quiet, tv]
 lead_in_s: 1.5
-tail_s: 1.0
 sample_rate: 48000
-output_device: null
 input_device: null
 model: small
 seed: 0

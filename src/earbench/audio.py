@@ -26,15 +26,22 @@ def load_mono(path: str | Path) -> tuple[np.ndarray, int]:
     return mono, int(sample_rate_hz)
 
 
+def resample_between(
+    audio: np.ndarray, sample_rate_in_hz: int, sample_rate_out_hz: int
+) -> np.ndarray:
+    """Resample mono audio between any two rates with a polyphase filter (anti-aliased)."""
+    mono = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if sample_rate_in_hz == sample_rate_out_hz:
+        return mono.copy()
+    divisor = math.gcd(int(sample_rate_in_hz), int(sample_rate_out_hz))
+    return resample_poly(
+        mono, int(sample_rate_out_hz) // divisor, int(sample_rate_in_hz) // divisor
+    ).astype(np.float32)
+
+
 def resample_to_16k(audio: np.ndarray, sample_rate_hz: int) -> np.ndarray:
     """Resample mono audio to 16 kHz with a polyphase filter (anti-aliased)."""
-    mono = np.asarray(audio, dtype=np.float32).reshape(-1)
-    if sample_rate_hz == SAMPLE_RATE_HZ:
-        return mono.copy()
-    divisor = math.gcd(sample_rate_hz, SAMPLE_RATE_HZ)
-    return resample_poly(mono, SAMPLE_RATE_HZ // divisor, sample_rate_hz // divisor).astype(
-        np.float32
-    )
+    return resample_between(audio, sample_rate_hz, SAMPLE_RATE_HZ)
 
 
 def load_16k(path: str | Path) -> np.ndarray:
@@ -53,6 +60,15 @@ def save_wav_16k_mono(path: str | Path, audio: np.ndarray) -> Path:
         wf.setsampwidth(2)
         wf.setframerate(SAMPLE_RATE_HZ)
         wf.writeframes(frames.tobytes())
+    return out_path
+
+
+def save_wav_mono(path: str | Path, audio: np.ndarray, sample_rate_hz: int) -> Path:
+    """Save mono float32 audio at any rate as 16-bit PCM WAV (recordings live here)."""
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    mono = np.clip(np.asarray(audio, dtype=np.float32).reshape(-1), -1.0, 1.0)
+    sf.write(str(out_path), mono, int(sample_rate_hz), subtype="PCM_16")
     return out_path
 
 
