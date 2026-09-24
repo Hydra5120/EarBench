@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "faster-whisper>=1.2",
     "jiwer>=4.0",
+    "matplotlib>=3.11.2",
     "numpy>=1.26",
     "pydantic>=2.0",
     "pyroomacoustics>=0.10.1",

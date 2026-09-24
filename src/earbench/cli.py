@@ -12,6 +12,7 @@ import numpy as np
 import typer
 
 from earbench import audio, manifest, noise
+from earbench import report as report_mod
 from earbench import sweep as sweep_mod
 from earbench.config import NoiseType, PrepareConfig, SweepConfig, load_config
 
@@ -156,9 +157,39 @@ def sweep(
 
 
 @app.command()
-def report(run_id: str = typer.Argument(..., help="Run id under runs/.")) -> None:
-    """Build charts + HTML report (not built yet)."""
-    _todo("4")
+def report(
+    run: Annotated[str, typer.Argument(help="Run dir (e.g. runs/<run_id>).")],
+    out: Annotated[str | None, typer.Option(help="Output dir (default: reports/<run_id>).")] = None,
+    best_model: Annotated[str | None, typer.Option(help="Override the best model.")] = None,
+    distance_snr: Annotated[
+        str | None, typer.Option(help="Chart C SNR levels, e.g. 'clean,10'.")
+    ] = None,
+    distance_noise: Annotated[NoiseType | None, typer.Option(help="Chart C noise type.")] = None,
+    reference_distance: Annotated[
+        float | None, typer.Option(help="Charts A/B distance in metres.")
+    ] = None,
+) -> None:
+    """Build charts + HTML report for a sweep run."""
+    with _exit_on_error():
+        run_dir = Path(run)
+        if not run_dir.is_dir():
+            fallback = Path("runs") / run
+            run_dir = fallback if fallback.is_dir() else run_dir
+        levels: list[float | None] | None = None
+        if distance_snr is not None:
+            levels = [
+                None if part.strip().lower() in ("clean", "none") else float(part)
+                for part in distance_snr.split(",")
+            ]
+        out_dir = report_mod.write_report(
+            run_dir,
+            Path(out) if out else None,
+            best_model=best_model,
+            distance_snr_db=levels,
+            distance_noise=distance_noise,
+            reference_distance_m=reference_distance,
+        )
+    typer.echo(f"report: {out_dir / 'report.html'}")
 
 
 @app.command()

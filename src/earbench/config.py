@@ -46,6 +46,15 @@ class RoomConfig(BaseModel):
     noise_pos_m: tuple[float, float, float] = (4.5, 3.5, 1.0)
 
 
+class ReportOptions(BaseModel):
+    """How `earbench report` picks rows for its charts and tables."""
+
+    reference_distance_m: float = 2.0  # charts A/B fix distance here
+    distance_snr_db: list[float | None] = [None, 10.0]  # None = clean; chart C lines
+    distance_noise: NoiseType = "tv"  # chart C noise type
+    best_model: str | None = None  # None = lowest overall WER
+
+
 class SweepConfig(BaseModel):
     """Which clips, distances, noises, and models to test."""
 
@@ -63,6 +72,7 @@ class SweepConfig(BaseModel):
     bootstrap_iters: int = 1000
     cache_dir: Path = Path("data/cache/transcribe")
     runs_dir: Path = Path("runs")
+    report: ReportOptions = ReportOptions()
     seed: int = 0
 
 
