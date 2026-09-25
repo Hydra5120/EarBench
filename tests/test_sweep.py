@@ -177,13 +177,15 @@ def test_condition_outer_matches_model_outer_results(sweep_env) -> None:
 def test_default_factory_passes_device_and_compute_type(monkeypatch, sweep_env) -> None:
     cfg, _ = sweep_env(n_per_group=1)
     cfg = cfg.model_copy(update={"device": "cuda", "compute_type": "float16"})
-    seen: list[tuple[str, str, str]] = []
+    seen: list[tuple[str, str, str, bool]] = []
 
-    def fake_whisper(model_size: str, *, device: str, compute_type: str) -> FakeTranscriber:
-        seen.append((model_size, device, compute_type))
+    def fake_whisper(
+        model_size: str, *, device: str, compute_type: str, vad_filter: bool = False
+    ) -> FakeTranscriber:
+        seen.append((model_size, device, compute_type, vad_filter))
         return FakeTranscriber()
 
     monkeypatch.setattr(sweep, "FasterWhisperTranscriber", fake_whisper)
     transcriber = sweep.default_transcriber_factory(cfg)("small")
     assert isinstance(transcriber, CachedTranscriber)
-    assert seen == [("small", "cuda", "float16")]
+    assert seen == [("small", "cuda", "float16", False)]

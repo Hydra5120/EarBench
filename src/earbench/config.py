@@ -65,6 +65,7 @@ class SweepConfig(BaseModel):
     snr_db: list[float] = [20.0, 10.0, 5.0, 0.0]
     include_clean: bool = True
     models: list[str] = ["tiny", "base", "small"]
+    vad_filter: bool = False  # Phase 6 fix: VAD on shows up as vad=on in settings
     device: str = "cpu"  # "cuda" needs the gpu extra: uv sync --extra gpu
     compute_type: str = "int8"  # "float16" on cuda
     room: RoomConfig = RoomConfig()

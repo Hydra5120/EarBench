@@ -394,6 +394,7 @@ def write_report(
     distance_snr_db: list[float | None] | None = None,
     distance_noise: str | None = None,
     reference_distance_m: float | None = None,
+    before_dir: str | Path | None = None,
 ) -> Path:
     """Build charts + HTML report for a sweep run. Returns the output directory."""
     run_path = Path(run_dir)
@@ -435,6 +436,29 @@ def write_report(
         for fig in figs:
             close_figure(fig)
 
+    fix_section = ""
+    if before_dir is not None:
+        from earbench import fix as fix_mod
+
+        before_rows = fix_mod.read_any_results(before_dir)
+        cells = fix_mod.compare(
+            before_rows,
+            results,
+            iters=cfg.bootstrap_iters,
+            seed=cfg.seed,
+            usable_wer=cfg.usable_wer,
+        )
+        fix_fig = fix_mod.fig_before_after(cells)
+        try:
+            fix_fig.savefig(out / fix_mod.FIX_CHART, dpi=100)
+        finally:
+            close_figure(fix_fig)
+        fix_section = (
+            "<h2>Fix comparison (before → after)</h2>\n"
+            f"{fix_mod.format_html_table(cells, 'Before', 'After')}\n"
+            f'<img src="{fix_mod.FIX_CHART}" alt="Before vs after chart">\n'
+        )
+
     notes_html = "".join(f"<p><i>Note: {html.escape(note)}</i></p>" for note in notes)
     config_text = (
         (run_path / "config.yaml").read_text(encoding="utf-8")
@@ -465,7 +489,7 @@ WER under {_pct(cfg.usable_wer)}; bootstrap {cfg.bootstrap_iters} iters, seed {c
 {notes_html}
 <h2>Worst conditions (best model, one row per noise type)</h2>
 {_worst_table(results, summary, model, cfg.usable_wer)}
-<h2>Config</h2>
+{fix_section}<h2>Config</h2>
 <details><summary>config.yaml</summary><pre>{html.escape(config_text)}</pre></details>
 </body></html>
 """

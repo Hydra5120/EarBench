@@ -232,11 +232,11 @@ def make_backend(cfg: RoomSessionConfig) -> AudioBackend:
     return SoundDeviceBackend(cfg.input_device)
 
 
-def default_transcriber_factory(model_size: str) -> Transcriber:
+def default_transcriber_factory(model_size: str, vad_filter: bool = False) -> Transcriber:
     """One faster-whisper transcriber (tests monkeypatch this for a FakeTranscriber)."""
     from earbench.transcribe import FasterWhisperTranscriber
 
-    return FasterWhisperTranscriber(model_size)
+    return FasterWhisperTranscriber(model_size, vad_filter=vad_filter)
 
 
 def sync_chirp(sample_rate_hz: int = PLAYLIST_RATE_HZ) -> np.ndarray:

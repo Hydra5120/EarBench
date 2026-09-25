@@ -112,7 +112,10 @@ def default_transcriber_factory(cfg: SweepConfig) -> TranscriberFactory:
 
     def factory(model_size: str) -> Transcriber:
         model = FasterWhisperTranscriber(
-            model_size, device=cfg.device, compute_type=cfg.compute_type
+            model_size,
+            device=cfg.device,
+            compute_type=cfg.compute_type,
+            vad_filter=cfg.vad_filter,
         )
         return CachedTranscriber(model, cfg.cache_dir)
 

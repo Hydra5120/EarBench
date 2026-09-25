@@ -12,6 +12,7 @@ import numpy as np
 import typer
 
 from earbench import audio, manifest, noise
+from earbench import fix as fix_mod
 from earbench import record as record_mod
 from earbench import report as report_mod
 from earbench import sweep as sweep_mod
@@ -175,6 +176,9 @@ def report(
     reference_distance: Annotated[
         float | None, typer.Option(help="Charts A/B distance in metres.")
     ] = None,
+    before: Annotated[
+        str | None, typer.Option(help="Before run dir for the Phase 6 fix comparison.")
+    ] = None,
 ) -> None:
     """Build charts + HTML report for a sweep run."""
     with _exit_on_error():
@@ -195,6 +199,7 @@ def report(
             distance_snr_db=levels,
             distance_noise=distance_noise,
             reference_distance_m=reference_distance,
+            before_dir=Path(before) if before else None,
         )
     typer.echo(f"report: {out_dir / 'report.html'}")
 
@@ -235,11 +240,19 @@ def record(
 @app.command(name="score-room")
 def score_room(
     session: str = typer.Argument(..., help="Session dir or id under recordings/."),
+    vad_filter: bool = typer.Option(
+        False, "--vad-filter", help="Transcribe with the VAD fix on (Phase 6)."
+    ),
 ) -> None:
     """Transcribe and score a real-room session into room-source result rows."""
     with _exit_on_error():
         session_dir = record_mod.resolve_session_dir(session)
-        rows = record_mod.score_session(session_dir)
+        factory = None
+        if vad_filter:
+            factory = lambda model: record_mod.default_transcriber_factory(  # noqa: E731
+                model, vad_filter=True
+            )
+        rows = record_mod.score_session(session_dir, transcriber_factory=factory)
     typer.echo(f"results: {session_dir / 'results.csv'} ({len(rows)} takes)")
 
 
@@ -256,6 +269,54 @@ def compare_room(
     typer.echo(f"compare: {session_dir / 'compare.csv'}")
     if note:
         typer.echo(note)
+
+
+@app.command(name="compare-fix")
+def compare_fix(
+    sim_before: str = typer.Option(..., "--sim-before", help="Before sweep run dir."),
+    sim_after: str = typer.Option(..., "--sim-after", help="After sweep run dir."),
+    room_before: str | None = typer.Option(
+        None, "--room-before", help="Before session dir (real room, later)."
+    ),
+    room_after: str | None = typer.Option(
+        None, "--room-after", help="After session dir (real room, later)."
+    ),
+    out: str | None = typer.Option(None, "--out", help="Output dir."),
+    iters: int | None = typer.Option(None, "--iters", help="Bootstrap iters."),
+    seed: int | None = typer.Option(None, "--seed", help="Bootstrap seed."),
+) -> None:
+    """Before/after numbers with intervals for the fix, sim now and room later."""
+    with _exit_on_error():
+        before_rows = fix_mod.read_any_results(sim_before)
+        after_rows = fix_mod.read_any_results(sim_after)
+        if (room_before is None) != (room_after is None):
+            raise ValueError("give both --room-before and --room-after, or neither")
+        if room_before is not None and room_after is not None:
+            before_rows = [*before_rows, *fix_mod.read_any_results(room_before)]
+            after_rows = [*after_rows, *fix_mod.read_any_results(room_after)]
+        n_iters, use_seed, usable = 1000, 0, 0.20
+        after_cfg = Path(sim_after) / "config.yaml"
+        if after_cfg.is_file():
+            cfg = load_config(after_cfg, SweepConfig)
+            n_iters, use_seed, usable = cfg.bootstrap_iters, cfg.seed, cfg.usable_wer
+        cells = fix_mod.compare(
+            before_rows,
+            after_rows,
+            iters=n_iters if iters is None else iters,
+            seed=use_seed if seed is None else seed,
+            usable_wer=usable,
+        )
+        out_dir = Path(out) if out else Path("reports") / f"fix-{Path(sim_after).name}"
+        fix_mod.write_compare(cells, out_dir)
+        fig = fix_mod.fig_before_after(cells)
+        try:
+            fig.savefig(out_dir / fix_mod.FIX_CHART, dpi=100)
+        finally:
+            report_mod.close_figure(fig)
+    typer.echo(f"compare: {out_dir / fix_mod.FIX_CSV}")
+    typer.echo(fix_mod.format_table(cells, "before", "after"))
+    if room_before is None:
+        typer.echo("room: pending -- rerun with --room-before/--room-after after the session")
 
 
 if __name__ == "__main__":

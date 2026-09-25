@@ -1,0 +1,83 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>EarBench report fix-after</title>
+<style>body { font-family: sans-serif; max-width: 60em; margin: 2em auto; }
+table { border-collapse: collapse; }
+td, th { border: 1px solid #999; padding: 4px 8px; }</style>
+</head><body>
+<h1>EarBench report: fix-after</h1>
+<p>Run id <b>fix-after</b>,
+config hash f10d2bed845e.
+Models: tiny. Usable threshold:
+WER under 20.0%; bootstrap 100 iters, seed 0.</p>
+<p>Best model: <b>tiny</b> (overall WER 260.4%).</p>
+<h2>Headline: best model at 2 m</h2>
+<table><tr><th>Noise</th><th>SNR (dB)</th><th>Older WER [95% CI]</th><th>Younger WER [95% CI]</th><th>Older usable</th><th>Younger usable</th></tr>
+<tr><td>tv</td><td>0</td><td>421.5% [236.8%–818.8%]</td><td>222.2% [145.0%–330.3%]</td><td>0.0%</td><td>0.0%</td></tr>
+<tr><td>tv</td><td>10</td><td>197.8% [145.4%–250.3%]</td><td>206.1% [152.1%–272.0%]</td><td>0.0%</td><td>0.0%</td></tr>
+</table>
+<h2>WER vs SNR (all models, both age groups pooled)</h2>
+<img src="wer_vs_snr.png" alt="WER vs SNR chart">
+<h2>Older vs younger (best model)</h2>
+<img src="age_gap.png" alt="Older vs younger chart">
+<h2>WER vs distance (best model, tv)</h2>
+<img src="wer_vs_distance.png" alt="WER vs distance chart">
+<p><i>In the sim, SNR is fixed at the mic, so distance only changes echo.</i></p>
+<p><i>Note: clean (none) is not in this run for tiny.</i></p>
+<h2>Worst conditions (best model, one row per noise type)</h2>
+<table><tr><th>Noise</th><th>Condition</th><th>Worst-group WER</th><th>Other-group WER</th><th>Usable rate</th><th>Median clip: reference → hypothesis</th><th>Worst clip: reference → hypothesis</th></tr>
+<tr><td>tv</td><td>2 m, 0 dB, older</td><td>421.5%</td><td>222.2%</td><td>0.0%</td><td>luckily the dagger could not penetrate the bullet proof vest → are you going to stop i am going to be coming back please come back please come back please come back please come back please come back</td><td>a museum representative stated that the novella is final drawings were lost → now i think it is true i am right as you can see it is true i am right i am right i am right i am right i am right i am right i am right i am right i am right i am right i am right i am right i am right i am right i am right i am right i am r</td></tr>
+</table>
+<h2>Fix comparison (before → after)</h2>
+<table><tr><th>Condition</th><th>Before WER [95% CI]</th><th>After WER [95% CI]</th><th>Delta (pp)</th><th>Usable before → after</th></tr>
+<tr><td>sim tiny older tv 0 dB 2 m</td><td>421.5% [201.2–798.8]</td><td>421.5% [236.8–818.8]</td><td>+0.0</td><td>0% → 0%</td></tr>
+<tr><td>sim tiny older tv 10 dB 2 m</td><td>411.8% [164.2–788.4]</td><td>197.8% [145.4–250.3]</td><td>-214.0</td><td>0% → 0%</td></tr>
+<tr><td>sim tiny younger tv 0 dB 2 m</td><td>362.6% [168.6–702.5]</td><td>222.2% [145.0–330.3]</td><td>-140.4</td><td>0% → 0%</td></tr>
+<tr><td>sim tiny younger tv 10 dB 2 m</td><td>175.8% [111.8–254.9]</td><td>206.1% [152.1–272.0]</td><td>+30.3</td><td>0% → 0%</td></tr>
+</table>
+<img src="fix-before-after.png" alt="Before vs after chart">
+<h2>Config</h2>
+<details><summary>config.yaml</summary><pre>manifest_path: data\manifest.csv
+clips_per_group: 10
+distances_m:
+- 2.0
+noise_files:
+  tv:
+  - data\noise\tv.wav
+snr_db:
+- 10.0
+- 0.0
+include_clean: false
+models:
+- tiny
+vad_filter: true
+device: cpu
+compute_type: int8
+room:
+  dims_m:
+  - 5.0
+  - 4.0
+  - 2.7
+  rt60_s: 0.5
+  mic_pos_m:
+  - 1.0
+  - 2.0
+  - 1.2
+  source_height_m: 1.2
+  noise_pos_m:
+  - 4.5
+  - 3.5
+  - 1.0
+usable_wer: 0.2
+bootstrap_iters: 100
+cache_dir: data\cache\transcribe
+runs_dir: runs
+report:
+  reference_distance_m: 2.0
+  distance_snr_db:
+  - null
+  - 10.0
+  distance_noise: tv
+  best_model: null
+seed: 0
+</pre></details>
+</body></html>
