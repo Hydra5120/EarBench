@@ -59,11 +59,6 @@ def _exit_on_error() -> Iterator[None]:
         raise typer.Exit(code=1) from exc
 
 
-def _todo(phase: str) -> None:
-    typer.echo(f"not implemented yet (Phase {phase}); see PLAN.md")
-    raise typer.Exit(code=1)
-
-
 @app.command()
 def prepare(
     config: str = typer.Option(..., "--config", help="Path to prepare YAML config."),
