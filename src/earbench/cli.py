@@ -266,7 +266,11 @@ def compare_room(
         sweep_cfg = load_config(config, SweepConfig)
         session_dir = record_mod.resolve_session_dir(session)
         _paired, note = record_mod.compare_session(session_dir, sweep_cfg)
+        cells = record_mod.read_compare_summary(session_dir / record_mod.COMPARE_SUMMARY_FILENAME)
     typer.echo(f"compare: {session_dir / 'compare.csv'}")
+    typer.echo(f"summary: {session_dir / record_mod.COMPARE_SUMMARY_FILENAME}")
+    typer.echo(f"chart: {session_dir / record_mod.COMPARE_GROUP_PNG}")
+    typer.echo(record_mod.format_compare_table(cells))
     if note:
         typer.echo(note)
 

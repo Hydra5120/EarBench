@@ -70,7 +70,9 @@ CLIPS_DIRNAME = "clips"
 RESULTS_FILENAME = "results.csv"
 SUMMARY_FILENAME = "summary.csv"
 COMPARE_FILENAME = "compare.csv"
+COMPARE_SUMMARY_FILENAME = "compare-summary.csv"
 COMPARE_PNG = "compare.png"
+COMPARE_GROUP_PNG = "compare-by-condition.png"
 CALIBRATION_FILENAME = "calibration.wav"
 
 PLAYLIST_RATE_HZ = SAMPLE_RATE_HZ  # playlists are built from 16 kHz clips
@@ -165,6 +167,31 @@ class CompareRow(BaseModel):
     sim_wer: float
     room_hypothesis: str
     sim_hypothesis: str
+
+
+class CompareCell(BaseModel):
+    """One pooled distance x condition cell: room vs sim WER with intervals.
+
+    `mean_snr_db` is the mean lead-in measured SNR for the cell (None when
+    quiet): the primary SNR figure. `phone_snr_db` is the rough phone-app
+    reference (speech dBA minus TV dBA): shown for context only, never used
+    for matching or simulation.
+    """
+
+    distance_m: float
+    condition: RoomCondition
+    noise_type: NoiseType
+    n_clips: int
+    mean_snr_db: float | None = None
+    phone_snr_db: float | None = None
+    room_wer: float
+    room_low: float
+    room_high: float
+    room_usable: float
+    sim_wer: float
+    sim_low: float
+    sim_high: float
+    sim_usable: float
 
 
 class AudioBackend(Protocol):
@@ -349,6 +376,21 @@ def read_timing(path: str | Path) -> list[TimingRow]:
 
     with open(path, encoding="utf-8", newline="") as handle:
         return [TimingRow.model_validate(row) for row in csv.DictReader(handle)]
+
+
+def read_compare_summary(path: str | Path) -> list[CompareCell]:
+    """Read a compare-summary.csv back into validated cells."""
+    import csv
+
+    with open(path, encoding="utf-8", newline="") as handle:
+        rows = []
+        for raw in csv.DictReader(handle):
+            fixed = {
+                key: (None if value == "" and key in ("mean_snr_db", "phone_snr_db") else value)
+                for key, value in raw.items()
+            }
+            rows.append(CompareCell.model_validate(fixed))
+        return rows
 
 
 def _chirp_template(native_rate_hz: int) -> np.ndarray:
@@ -915,9 +957,14 @@ def compare_session(
     estimated SNR) and pair real vs simulated WER.
 
     Reads `results.csv`, so `score-room` must run first. The sweep config must
-    name exactly the model the recordings were scored with. The simulation uses
-    the typed room size, webcam and TV positions; sessions without them fall
-    back to the sweep config's room (reported in the returned note).
+    include the recorded model (it may list other models too, e.g.
+    `configs/full.yaml`); the recorded model is the one that is simulated.
+    The simulation uses the typed room size, webcam and TV positions; sessions
+    without them fall back to the sweep config's room (reported in the
+    returned note). The per-take pairs go to `compare.csv`, the pooled
+    per-distance-x-condition table with bootstrap intervals to
+    `compare-summary.csv`, plus a scatter (`compare.png`) and a grouped
+    bar chart with intervals (`compare-by-condition.png`).
     """
     session_path = Path(session_dir)
     session = read_session(session_path / SESSION_FILENAME)
@@ -930,7 +977,7 @@ def compare_session(
     if not room_rows:
         raise ValueError(f"no scored takes in {results_path}")
     room_models = sorted({row.model for row in room_rows})
-    if len(sweep_cfg.models) != 1 or len(room_models) != 1 or sweep_cfg.models[0] != room_models[0]:
+    if len(room_models) != 1 or room_models[0] not in sweep_cfg.models:
         raise ValueError(
             f"cannot compare: sweep config models {sweep_cfg.models} differ from "
             f"the recorded model {room_models} (score-room used {room_models})"
@@ -947,6 +994,8 @@ def compare_session(
     transcriber = factory(model)
 
     sim_cache: dict[tuple[str, float, NoiseType, float | None], CompareRow] = {}
+    sim_scores: dict[tuple[str, float, NoiseType, float | None], scoring.ClipScore] = {}
+    fallback_distances: set[float] = set()
     paired: list[CompareRow] = []
     for row in room_rows:
         key = (row.clip_id, row.distance_m, row.noise_type, row.snr_db)
@@ -955,18 +1004,33 @@ def compare_session(
             clip = clips.get(row.clip_id)
             if clip is None:
                 raise ValueError(f"clip {row.clip_id!r} is not in the session manifest")
-            if session.webcam_pos_m is not None:
-                speech = room_sim.simulate_at(
-                    audio.load_16k(clip.wav_path), voice_position(session, row.distance_m), room
-                )
-            else:  # older sessions without positions: distance along +x from the sweep mic
-                speech = room_sim.simulate(audio.load_16k(clip.wav_path), row.distance_m, room)
+            use_room = room
+            try:
+                if session.webcam_pos_m is not None:
+                    speech = room_sim.simulate_at(
+                        audio.load_16k(clip.wav_path),
+                        voice_position(session, row.distance_m),
+                        room,
+                    )
+                else:  # older sessions without positions: distance along +x from the sweep mic
+                    speech = room_sim.simulate(audio.load_16k(clip.wav_path), row.distance_m, room)
+            except ValueError:
+                # The typed voice position (webcam +y at the block distance)
+                # falls outside the typed room (here: webcam y=2.0 m in a 4.0 m
+                # room, so 2 m lands on the wall and 3 m lands outside). Fall
+                # back to the sweep config room (voice along +x) for those
+                # takes and say so, instead of failing the whole comparison.
+                use_room = sweep_cfg.room
+                speech = room_sim.simulate(audio.load_16k(clip.wav_path), row.distance_m, use_room)
+                fallback_distances.add(row.distance_m)
             if row.noise_type == "none" or row.snr_db is None or tv_noise is None:
                 mixed = speech
             else:
                 seed = _condition_seed(session.seed, row.clip_id, row.noise_type)
                 mixed = noise.mix(
-                    speech, noise.noise_at_mic(tv_noise, speech.shape[0], seed, room), row.snr_db
+                    speech,
+                    noise.noise_at_mic(tv_noise, speech.shape[0], seed, use_room),
+                    row.snr_db,
                 )
             sim_hypothesis = transcriber.transcribe(mixed, SAMPLE_RATE_HZ)
             sim_scored = scoring.score_clip(clip.sentence, sim_hypothesis)
@@ -982,6 +1046,7 @@ def compare_session(
                 sim_hypothesis=sim_hypothesis,
             )
             sim_cache[key] = cached
+            sim_scores[key] = sim_scored
         paired.append(
             CompareRow(
                 clip_id=row.clip_id,
@@ -997,8 +1062,121 @@ def compare_session(
         )
     write_csv(CompareRow, paired, session_path / COMPARE_FILENAME)
     _write_compare_plot(paired, session.session_id, session_path / COMPARE_PNG)
+    cells = summarize_compare(paired, room_rows, sim_scores, session)
+    write_csv(CompareCell, cells, session_path / COMPARE_SUMMARY_FILENAME)
+    _write_compare_group_plot(cells, session.session_id, session_path / COMPARE_GROUP_PNG)
+    if fallback_distances:
+        fell = ", ".join(f"{d:g} m" for d in sorted(fallback_distances))
+        extra = (
+            f"geometry note: typed voice (webcam +y) at {fell} falls on/outside "
+            f"the {tuple(room.dims_m)} m room, so those sims use the sweep room "
+            "(voice along +x); 1 m uses the typed geometry"
+            if not note
+            else f"{note}; typed voice at {fell} falls outside the room, "
+            "those sims use the sweep room (voice along +x)"
+        )
+        note = extra
+        logger.warning("%s", extra)
     logger.info("compared %s: %d takes", session_path, len(paired))
     return paired, note
+
+
+def _phone_snr_by_cell(session: SessionFile) -> dict[tuple[float, NoiseType], float | None]:
+    """Rough phone-app SNR per (distance, noise): speech dBA minus TV dBA.
+
+    Shown for context only. Phone apps are uncalibrated and A-weighted at a
+    different position from the mic, so this never drives the simulation: the
+    lead-in measured SNR in `results.csv` is the primary figure.
+    """
+    out: dict[tuple[float, NoiseType], float | None] = {}
+    for block in session.blocks:
+        noise_type: NoiseType = _room_noise_type(block.condition)
+        if noise_type == "none":
+            out.setdefault((block.distance_m, noise_type), None)
+            continue
+        if block.speech_level_dba is not None and block.tv_level_dba is not None:
+            out.setdefault(
+                (block.distance_m, noise_type),
+                block.speech_level_dba - block.tv_level_dba,
+            )
+        else:
+            out.setdefault((block.distance_m, noise_type), None)
+    return out
+
+
+def summarize_compare(
+    paired: list[CompareRow],
+    room_rows: list[ResultRow],
+    sim_scores: dict[tuple[str, float, NoiseType, float | None], scoring.ClipScore],
+    session: SessionFile,
+    *,
+    iters: int = BOOTSTRAP_ITERS,
+) -> list[CompareCell]:
+    """Pool paired takes per distance x condition: corpus WER with 95% intervals.
+
+    Room intervals come from the room `ResultRow`s (errors/words); sim
+    intervals from the cached sim `ClipScore`s. `mean_snr_db` is the mean
+    measured lead-in SNR for the cell (primary figure); `phone_snr_db` is the
+    rough phone-app reference.
+    """
+    room_by_take: dict[tuple[str, float, NoiseType, float | None], ResultRow] = {
+        (row.clip_id, row.distance_m, row.noise_type, row.snr_db): row for row in room_rows
+    }
+    grouped: dict[tuple[float, NoiseType], list[CompareRow]] = {}
+    for row in paired:
+        grouped.setdefault((row.distance_m, row.noise_type), []).append(row)
+    phone = _phone_snr_by_cell(session)
+    cells: list[CompareCell] = []
+    for (distance_m, noise_type), takes in sorted(grouped.items()):
+        room_group = [
+            room_by_take[(t.clip_id, t.distance_m, t.noise_type, t.snr_db)] for t in takes
+        ]
+        sim_group = [sim_scores[(t.clip_id, t.distance_m, t.noise_type, t.snr_db)] for t in takes]
+        room_low, room_high = scoring.bootstrap_ci(room_group, iters, session.seed)
+        sim_low, sim_high = scoring.bootstrap_ci(sim_group, iters, session.seed)
+        snrs = [t.snr_db for t in takes if t.snr_db is not None]
+        mean_snr = float(sum(snrs) / len(snrs)) if snrs else None
+        condition: RoomCondition = "quiet" if noise_type == "none" else "tv"
+        cells.append(
+            CompareCell(
+                distance_m=distance_m,
+                condition=condition,
+                noise_type=noise_type,
+                n_clips=len(takes),
+                mean_snr_db=mean_snr,
+                phone_snr_db=phone.get((distance_m, noise_type)),
+                room_wer=scoring.corpus_wer(room_group),
+                room_low=room_low,
+                room_high=room_high,
+                room_usable=scoring.usable_rate(room_group, USABLE_WER),
+                sim_wer=scoring.corpus_wer(sim_group),
+                sim_low=sim_low,
+                sim_high=sim_high,
+                sim_usable=scoring.usable_rate(sim_group, USABLE_WER),
+            )
+        )
+    return cells
+
+
+def format_compare_table(cells: list[CompareCell]) -> str:
+    """One line per distance x condition: room/sim WER with intervals and SNRs."""
+    lines = [
+        f"{'Cell':<14} {'n':>3} {'Meas SNR':>9} {'Phone~':>7} "
+        f"{'Room WER [95% CI]':<24} {'Sim WER [95% CI]':<24}"
+    ]
+    for cell in cells:
+        meas = "clean" if cell.mean_snr_db is None else f"{cell.mean_snr_db:.1f} dB"
+        phone = "—" if cell.phone_snr_db is None else f"~{cell.phone_snr_db:.0f} dB"
+        lines.append(
+            f"{cell.distance_m:g} m {cell.condition:<6} {cell.n_clips:>3} "
+            f"{meas:>9} {phone:>7} "
+            f"{100 * cell.room_wer:5.1f}% "
+            f"[{100 * cell.room_low:5.1f}-{100 * cell.room_high:5.1f}] "
+            f"{100 * cell.sim_wer:5.1f}% "
+            f"[{100 * cell.sim_low:5.1f}-{100 * cell.sim_high:5.1f}]"
+        )
+    lines.append("Measured SNR is primary; phone dBA is a rough reference only.")
+    return "\n".join(lines)
 
 
 def _write_compare_plot(paired: list[CompareRow], session_id: str, out_path: Path) -> Path:
@@ -1012,6 +1190,60 @@ def _write_compare_plot(paired: list[CompareRow], session_id: str, out_path: Pat
     ax.set_xlabel("Simulated WER (%)")
     ax.set_ylabel("Real-room WER (%)")
     ax.set_title(f"Real vs simulated ({session_id})")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=100)
+    plt.close(fig)
+    return out_path
+
+
+def _write_compare_group_plot(cells: list[CompareCell], session_id: str, out_path: Path) -> Path:
+    """Grouped room-vs-sim bars per distance x condition, with 95% whiskers.
+
+    The x labels carry the primary figure (mean measured SNR, or clean); the
+    rough phone-app reference lives in `compare-summary.csv`, not on the
+    chart, so nobody reads the phone numbers as the SNR.
+    """
+    labels = [
+        (
+            f"{cell.distance_m:g} m {cell.condition}\n"
+            f"{'clean' if cell.mean_snr_db is None else f'{cell.mean_snr_db:.1f} dB meas'}"
+        )
+        for cell in cells
+    ]
+    xs = list(range(len(cells)))
+    width = 0.35
+    room_xs = [x - width / 2 for x in xs]
+    sim_xs = [x + width / 2 for x in xs]
+    room_yerr = [
+        [100 * (cell.room_wer - cell.room_low), 100 * (cell.room_high - cell.room_wer)]
+        for cell in cells
+    ]
+    sim_yerr = [
+        [100 * (cell.sim_wer - cell.sim_low), 100 * (cell.sim_high - cell.sim_wer)]
+        for cell in cells
+    ]
+    fig, ax = plt.subplots(figsize=(max(8, 1.6 * len(cells)), 4.5))
+    ax.bar(
+        room_xs,
+        [100 * cell.room_wer for cell in cells],
+        width,
+        yerr=list(zip(*room_yerr, strict=True)) if cells else None,
+        capsize=3,
+        label="room (measured)",
+    )
+    ax.bar(
+        sim_xs,
+        [100 * cell.sim_wer for cell in cells],
+        width,
+        yerr=list(zip(*sim_yerr, strict=True)) if cells else None,
+        capsize=3,
+        label="sim (at measured SNR)",
+    )
+    ax.set_xticks(xs, labels)
+    ax.set_xlabel("Distance x condition (measured SNR primary)")
+    ax.set_ylabel("Corpus WER (%)")
+    ax.set_title(f"Room vs simulated per distance/condition ({session_id})")
+    ax.legend()
     fig.tight_layout()
     fig.savefig(out_path, dpi=100)
     plt.close(fig)
