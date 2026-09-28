@@ -179,7 +179,7 @@ test("@slow without cross-origin isolation it still transcribes, single-threaded
   await expect(voice(page).getByTestId("voice-clean")).not.toContainText("…", { timeout: 200_000 });
 });
 
-test("@slow wide screens preload the model once the panel is in view, and recording reuses it", async ({
+test("@slow wide screens start the download on the first play, and recording reuses it", async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -190,13 +190,14 @@ test("@slow wide screens preload the model once the panel is in view, and record
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/?live=wasm");
   await page.waitForTimeout(3_000);
-  expect(modelRequests).toEqual([]); // nothing downloads before the panel is on screen
-  await openVoice(page);
+  expect(modelRequests).toEqual([]); // nothing downloads just for visiting
+  await reveal(page); // play a clip in the main panel
   await expect.poll(() => modelRequests.length, { timeout: 30_000 }).toBeGreaterThan(0);
   await page.waitForTimeout(15_000); // let the preload finish
   const preloaded = modelRequests.length;
 
+  await openVoice(page);
   await record(page, 2_000);
   await expect(voice(page).getByTestId("voice-clean")).not.toContainText("…", { timeout: 120_000 });
-  expect(modelRequests.length).toBe(preloaded); // nothing downloaded twice
+  expect(modelRequests.length).toBe(preloaded); // one worker, nothing downloaded twice
 });

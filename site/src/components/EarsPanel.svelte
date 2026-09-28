@@ -203,6 +203,9 @@
     }
     if (playing) raf = requestAnimationFrame(tick);
   }
+  // The first play is a sign of interest: start downloading Whisper for the your-voice
+  // panel below while the clips play (wide screens only, never on save-data).
+  let warmed = false;
   function onPlay() {
     playing = true;
     live = true;
@@ -210,6 +213,10 @@
     if (audioSrc) heardSrcs[audioSrc] = true;
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(tick);
+    if (!warmed) {
+      warmed = true;
+      void import("../live/live").then((m) => m.preloadWhenIdle());
+    }
   }
   function onPause() {
     playing = false;
