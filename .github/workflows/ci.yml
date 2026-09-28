@@ -18,3 +18,49 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pyright
       - run: uv run pytest
+
+  # Build the site on every push so a broken build shows up before it can ship.
+  site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: site/dist
+          retention-days: 7
+
+  # Deploy to Cloudflare only from master, and only when the checks and build passed.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [check, site]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-site
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-dist
+          path: site/dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: site
+          wranglerVersion: "4.147.0"
+          command: deploy
