@@ -1,0 +1,110 @@
+---
+// Real room vs simulation: share of sentences usable per condition, 95% intervals.
+import { pct, type Room } from "../lib/data";
+
+interface Props {
+  room: Room;
+}
+const { room } = Astro.props;
+
+const rows = [...room.rows].sort(
+  (a, b) => a.condition.localeCompare(b.condition) || a.distance_m - b.distance_m,
+);
+const W = 640;
+const rowH = 40;
+const M = { top: 16, right: 24, bottom: 44, left: 112 };
+const H = M.top + rows.length * rowH + M.bottom;
+const iw = W - M.left - M.right;
+const right = 1;
+const ticks = [0, 0.25, 0.5, 0.75, 1];
+const x = (v: number) => M.left + (v / right) * iw;
+const yc = (i: number) => M.top + i * rowH + rowH / 2;
+const label = (r: (typeof rows)[number]) => `${r.condition === "tv" ? "TV on" : "Quiet"}, ${r.distance_m} m`;
+const tip = (r: (typeof rows)[number]) =>
+  JSON.stringify({
+    title: label(r),
+    rows: [
+      [
+        "Real room",
+        pct(r.room_usable),
+        `${Math.round(r.room_usable * r.n_clips)} of ${r.n_clips}`,
+        `${pct(r.room_usable_low)}–${pct(r.room_usable_high)}`,
+      ],
+      [
+        "Simulation",
+        pct(r.sim_usable),
+        `${Math.round(r.sim_usable * r.n_clips)} of ${r.n_clips}`,
+        `${pct(r.sim_usable_low)}–${pct(r.sim_usable_high)}`,
+      ],
+      ...(r.mean_snr_db === null
+        ? []
+        : [["Measured noise vs voice", `−${r.mean_snr_db.toFixed(1)} dB`, "", ""]]),
+    ],
+  });
+---
+
+<figure class="chart" data-chart>
+  <figcaption id="chart-room">
+    Usable sentences in the real room and in the simulation{room.model ? ` (Whisper ${room.model})` : ""}
+  </figcaption>
+  <ul class="chart-legend">
+    <li><span class="mark-swatch" style="background:var(--s1);border-radius:50%"></span>Real room</li>
+    <li><span class="mark-swatch" style="background:var(--s2)"></span>Simulation</li>
+    <li class="legend-band"><span class="whisker-swatch"></span>95% interval</li>
+  </ul>
+  <div class="chart-box">
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby="chart-room">
+      {ticks.map((t) => (
+        <g>
+          <line x1={x(t)} x2={x(t)} y1={M.top} y2={H - M.bottom} class="grid" />
+          <text x={x(t)} y={H - M.bottom + 18} class="tick" text-anchor="middle">{pct(t)}</text>
+        </g>
+      ))}
+      <text x={W / 2} y={H - 4} class="axis-title" text-anchor="middle">sentences usable</text>
+      {rows.map((r, i) => (
+        <g>
+          <text x={M.left - 12} y={yc(i)} class="row-label" text-anchor="end" dominant-baseline="middle">
+            {label(r)}
+          </text>
+          <line x1={x(r.room_usable_low)} x2={x(r.room_usable_high)} y1={yc(i) - 6} y2={yc(i) - 6} class="whisker" stroke="var(--s1)" />
+          <circle cx={x(r.room_usable)} cy={yc(i) - 6} r="5" fill="var(--s1)" class="dot" />
+          <line x1={x(r.sim_usable_low)} x2={x(r.sim_usable_high)} y1={yc(i) + 6} y2={yc(i) + 6} class="whisker" stroke="var(--s2)" />
+          <rect x={x(r.sim_usable) - 4.5} y={yc(i) + 1.5} width="9" height="9" fill="var(--s2)" class="dot" />
+          <rect class="hit" x={M.left} y={yc(i) - rowH / 2} width={iw} height={rowH} data-y={yc(i)} data-tip={tip(r)} />
+        </g>
+      ))}
+    </svg>
+    <div class="tooltip" role="status" hidden></div>
+  </div>
+  <details class="table-view">
+    <summary>Show table</summary>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Condition</th>
+          <th scope="col">Real room</th>
+          <th scope="col">Simulation</th>
+          <th scope="col">Noise vs voice</th>
+          <th scope="col">Clips</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr>
+            <th scope="row">{label(r)}</th>
+            <td>
+              {pct(r.room_usable)}{" "}
+              <small>({pct(r.room_usable_low)}–{pct(r.room_usable_high)}; WER {pct(r.room_wer)})</small>
+            </td>
+            <td>
+              {pct(r.sim_usable)}{" "}
+              <small>({pct(r.sim_usable_low)}–{pct(r.sim_usable_high)}; WER {pct(r.sim_wer)})</small>
+            </td>
+            <td>{r.mean_snr_db === null ? "none" : `−${r.mean_snr_db.toFixed(1)} dB`}</td>
+            <td>{r.n_clips}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </details>
+</figure>

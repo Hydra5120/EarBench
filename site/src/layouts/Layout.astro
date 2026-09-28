@@ -1,0 +1,142 @@
+---
+import "../styles/global.css";
+import indexJson from "../../public/data/index.json";
+import type { SiteIndex } from "../lib/data";
+
+interface Props {
+  title: string;
+  description: string;
+  active: "results" | "setup";
+}
+const { title, description, active } = Astro.props;
+const index = indexJson as SiteIndex;
+const manifest = index.site_manifest;
+const versions = [
+  ...new Set(manifest.runs.flatMap((r) => r.model_versions.map((v) => v.split("+")[0]))),
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <slot name="head" />
+  </head>
+  <body>
+    <nav class="topnav" aria-label="Pages">
+      <div class="wrap topnav-inner">
+        <a class="wordmark" href="/">EarBench</a>
+        <div class="navtabs">
+          <a href="/" aria-current={active === "results" ? "page" : undefined}>Results</a>
+          <a href="/setup/" aria-current={active === "setup" ? "page" : undefined}>How I tested it</a>
+        </div>
+      </div>
+    </nav>
+
+    <slot />
+
+    <footer class="footer">
+      <div class="wrap">
+        <p>
+          {manifest.runs.map((run, i) => (
+            <>
+              {i > 0 && " · "}
+              {run.role === "benchmark" ? "Benchmark" : "VAD"} run <code>{run.run_id}</code>
+            </>
+          ))}
+          {" · "}Room session <code>{manifest.room_session}</code>
+        </p>
+        <p>
+          {versions.map((v) => `faster-whisper ${v}`)}
+          {" · "}
+          {manifest.runs.flatMap((r) => r.settings).join(" / ")}
+        </p>
+        <p>
+          Exported {manifest.exported_at}
+          {manifest.git_commit && (
+            <>
+              {" "}from commit <code>{manifest.git_commit.slice(0, 7)}</code>
+            </>
+          )}
+          . All results come from these runs.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .topnav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in oklab, var(--page) 88%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .topnav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 56px;
+  }
+  .wordmark {
+    font-family: var(--serif);
+    font-size: 1.2rem;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .navtabs {
+    display: flex;
+    gap: 4px;
+    align-self: stretch;
+  }
+  .navtabs a {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 0.9rem;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition:
+      color 0.2s var(--ease),
+      border-color 0.2s var(--ease);
+  }
+  .navtabs a:hover {
+    color: var(--ink);
+  }
+  .navtabs a[aria-current="page"] {
+    color: var(--ink);
+    font-weight: 600;
+    border-bottom-color: var(--ink);
+  }
+  @media (max-width: 420px) {
+    .navtabs a {
+      padding: 0 8px;
+      font-size: 0.85rem;
+    }
+  }
+
+  .footer {
+    border-top: 1px solid var(--hairline);
+    padding-block: 28px 44px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .footer p {
+    margin: 0 0 4px;
+    overflow-wrap: anywhere;
+  }
+  code {
+    font-size: 0.95em;
+  }
+</style>

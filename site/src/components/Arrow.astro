@@ -1,0 +1,20 @@
+---
+// A drawn arrow for buttons and links; nudges in its direction on hover (see .button).
+interface Props {
+  dir?: "right" | "down" | "up-right";
+}
+const { dir = "right" } = Astro.props;
+const rotate = { right: 0, down: 90, "up-right": -45 }[dir];
+---
+
+<svg
+  class="arrow"
+  data-dir={dir}
+  viewBox="0 0 16 16"
+  width="16"
+  height="16"
+  aria-hidden="true"
+  style={`--r:${rotate}deg`}
+>
+  <path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>

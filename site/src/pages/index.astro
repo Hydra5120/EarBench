@@ -1,0 +1,563 @@
+---
+import Layout from "../layouts/Layout.astro";
+import EarsPanel from "../components/EarsPanel.svelte";
+import LineChart from "../components/LineChart.astro";
+import RoomChart from "../components/RoomChart.astro";
+import ChartTooltip from "../components/ChartTooltip.astro";
+import Arrow from "../components/Arrow.astro";
+import indexJson from "../../public/data/index.json";
+import chartsJson from "../../public/data/charts.json";
+import roomJson from "../../public/data/room.json";
+import { pct, snrLabel, type Charts, type Point, type Room, type SiteIndex } from "../lib/data";
+
+const index = indexJson as SiteIndex;
+const charts = chartsJson as Charts;
+const room = roomJson as Room;
+
+// HUMAN: set to the public repository URL.
+const REPO_URL: string | null = null;
+
+const noiseLabel = Object.fromEntries(index.noise_types.map((n) => [n.id, n.label]));
+const seriesLabels: Record<string, string> = {
+  older: "Older",
+  younger: "Younger",
+  tiny: "tiny",
+  base: "base",
+  small: "small",
+  ...noiseLabel,
+};
+const hero = charts.hero;
+const oneIn = Math.round(1 / index.usable_wer); // 0.2 -> "1 mistake in 5 words"
+
+// Every number in the copy below is read from charts.json / room.json.
+const byId = Object.fromEntries(charts.findings.map((f) => [f.id, f]));
+const point = (id: string, key: string, snr: number | null): Point => {
+  const p = byId[id]?.series.find((s) => s.key === key)?.points.find((q) => q.snr_db === snr);
+  if (!p) throw new Error(`charts.json has no ${id}/${key}/${snr}`);
+  return p;
+};
+const share = (p: Point) => pct(p.usable_rate);
+const household = ["living", "kitchen", "cafeteria"].map((n) => point("noise_types", n, 0));
+const lowest = Math.min(...household.map((p) => p.usable_rate));
+const highest = Math.max(...household.map((p) => p.usable_rate));
+const ageGap = Math.max(
+  ...(byId.age_gap?.series[0].points ?? []).map((p, i) =>
+    Math.abs(p.usable_rate - (byId.age_gap?.series[1].points[i].usable_rate ?? 0)),
+  ),
+);
+const roomRow = (condition: string, d: number) =>
+  room.rows.find((r) => r.condition === condition && r.distance_m === d);
+const tv1 = roomRow("tv", 1);
+const tv3 = roomRow("tv", 3);
+const nRoom = room.rows[0]?.n_clips ?? 0;
+
+const findingCopy: Record<string, { body: string }> = {
+  noise_types: {
+    body:
+      `With café, kitchen or living-room noise as loud as the voice, ${pct(lowest)} to ` +
+      `${pct(highest)} of sentences were still usable. A TV 10 dB quieter than the voice cut ` +
+      `that to ${share(point("noise_types", "tv", 10))}, and 5 dB quieter than the voice to ` +
+      `${point("noise_types", "tv", 5).usable_rate === 0 ? "none" : share(point("noise_types", "tv", 5))}. A TV is mostly people talking, and Whisper ` +
+      `writes them down too.`,
+  },
+  model_size: {
+    body:
+      `In a quiet room, tiny got ${share(point("model_size", "tiny", null))} of older ` +
+      `speakers' sentences usable and small got ${share(point("model_size", "small", null))}. ` +
+      `With café noise as loud as the voice, small fell to ` +
+      `${share(point("model_size", "small", 0))}. It is also the slowest of the three.`,
+  },
+  age_gap: {
+    body:
+      `Older and younger speakers were never more than ${Math.round(ageGap * 100)} points apart, ` +
+      `and the intervals overlap at every level. Most of the older speakers were in their sixties ` +
+      `and seventies, though.`,
+  },
+};
+---
+
+<Layout
+  title="EarBench"
+  description="How well does off-the-shelf speech recognition hear older Australians over background noise? Listen and see."
+  active="results"
+>
+  <Fragment slot="head"><link rel="preload" href={`/data/${index.clips[0].data}`} as="fetch" crossorigin="anonymous" /></Fragment>
+    <header class="hero">
+      <div class="wrap hero-inner">
+        <div class="hero-text">
+          <p class="eyebrow">Tested on older Australian voices</p>
+          <h1 class="hero-q">Can a robot understand an older person over the TV?</h1>
+          <p class="hero-a">
+            {`Not yet. With a TV on in the room, Whisper turned only ` +
+              `${pct(hero.older.usable_rate)} of older speakers' sentences into usable text.`}
+          </p>
+          <a class="button" href="#ears">Listen for yourself <Arrow dir="down" /></a>
+        </div>
+        <div class="hero-side">
+          <a class="teaser card" href="/setup/">
+            <img
+              src="/img/setup-1m-wide-800.webp"
+              width="800"
+              height="600"
+              alt="The webcam on the desk and the MacBook on a chair 1 m away."
+              loading="eager"
+              decoding="async"
+            />
+            <span class="teaser-text">
+              <span>I tested this at home with a laptop and a webcam.</span>
+              <span class="teaser-link">See the setup and the code <Arrow /></span>
+            </span>
+          </a>
+        <div class="hero-stats">
+          <div class="stat">
+            <span class="stat-num accent">{pct(hero.older.usable_rate)}</span>
+            <span class="stat-label">usable with the TV on</span>
+          </div>
+          <div class="stat">
+            <span class="stat-num">{pct(hero.older_quiet.usable_rate)}</span>
+            <span class="stat-label">usable in a quiet room</span>
+          </div>
+          <p class="stat-note">
+            {`Whisper ${hero.model} listening to ${hero.older.n_clips} older speakers from ` +
+              `${hero.distance_m} m away, with the TV ${snrLabel(hero.snr_db).replace(" ", " ")} quieter than their ` +
+              `voices. A sentence is usable when fewer than 1 word in ${oneIn} is wrong.`}
+          </p>
+        </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="why" class="why">
+        <div class="wrap why-inner">
+          <h2>Why I built this</h2>
+          <div class="why-text">
+            <blockquote class="quote">
+              <p>Whisper was trained on data that skews hard towards American and British English.</p>
+              <footer>
+                Kathy Reid,{" "}
+                <a href="https://community.mozilladatacollective.com/why-whisper-still-struggles-with-australian-english-and-what-we-did-about-it/">Why Whisper still struggles with Australian English</a>,
+                Mozilla Data Collective, 2026
+              </footer>
+            </blockquote>
+            <p>
+              Her article explains why an Australian accent trips Whisper up and shows how to
+              fine-tune it on Australian recordings from Common Voice. I used the same recordings.
+            </p>
+            <p>
+              Robots are being built here in Australia to work in aged care. The people they talk to
+              will be older, they will have Australian accents, and there will often be a TV or other
+              residents talking in the background. I built this to see how off-the-shelf Whisper
+              copes with that mix, before any fine-tuning.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="ears" class="ears">
+        <div class="wrap">
+          <h2>Be the robot's ears</h2>
+          <p class="lede">
+            Pick a voice, add some noise and press play. You hear what the robot's microphone
+            picked up from {index.distance_m} m away, and what Whisper wrote down.
+          </p>
+          <EarsPanel client:load index={index} />
+        </div>
+      </section>
+
+      <section id="findings" class="findings">
+        <div class="wrap">
+          <h2>What I found</h2>
+          <ol class="finding-list">
+            {charts.findings.map((finding) => (
+              <li class="finding reveal">
+                <div class="finding-text">
+                  <p>{findingCopy[finding.id]?.body}</p>
+                </div>
+                <div class="card chart-card">
+                  <LineChart finding={finding} labels={seriesLabels} />
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section id="real-room" class="real-room">
+        <div class="wrap">
+          <h2>Does the simulation hold up?</h2>
+          <p class="lede">
+            {`I played ${nRoom} clips from a laptop and recorded them on a webcam 1, 2 and 3 m ` +
+              `away, with the TV off and on.`}
+            {tv1 && tv3 &&
+              ` With the TV on, both fell apart with distance: ${pct(tv1.room_usable)} usable at ` +
+                `1 m down to ${pct(tv3.room_usable)} at 3 m in the room, and ${pct(tv1.sim_usable)} ` +
+                `to ${pct(tv3.sim_usable)} in the simulation.`}
+          </p>
+          <p class="caveat" role="note">
+            <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="8.25" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M10 9v5M10 6.2v.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg>
+            <span>{room.label.charAt(0).toUpperCase() + room.label.slice(1)}</span>
+          </p>
+          <div class="card chart-card reveal">
+            <RoomChart room={room} />
+          </div>
+        </div>
+      </section>
+
+      <section id="how" class="how">
+        <div class="wrap">
+          <h2>How it works</h2>
+          <div class="how-text reveal">
+            <p>
+              I took one sentence each from 100 Australian English speakers in Mozilla Common
+              Voice. Fifty were over 60 and fifty were between 20 and 49.
+            </p>
+            <p>
+              Each sentence was played into a simulated 5 × 4 m room with half a second of echo and
+              picked up by a microphone at a robot's head height, 1 to 3 m away. I then mixed in
+              recordings of a living room, a kitchen, a café or a TV, starting from silence and going
+              up to as loud as the voice.
+            </p>
+            <p>
+              Whisper tiny, base and small transcribed every clip. I counted a sentence as usable
+              when fewer than 1 word in {oneIn} was wrong.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="limitations" class="limitations">
+        <div class="wrap narrow">
+          <h2>Limitations</h2>
+          <ul class="plain-list">
+            <li>
+              Most of the older speakers were in their sixties and seventies, reading sentences
+              aloud. People in aged care are often older and speak less clearly.
+            </li>
+            <li>I only simulated one room.</li>
+            <li>All the voices are Australian, so the results may not carry over to other accents.</li>
+            <li>
+              Living-room and kitchen noise is mostly low rumble, so it covers speech less than its
+              decibel level suggests.
+            </li>
+            <li>With 50 speakers per group, the intervals are wide.</li>
+            <li>The real-room test was one session, with a laptop standing in for a person.</li>
+            <li>
+              Whisper ran on a desktop graphics card. A robot's own computer would run a
+              lower-precision version, which can transcribe a little differently.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="credits" class="credits">
+        <div class="wrap narrow">
+          <h2>Credits</h2>
+          <ul class="plain-list">
+            <li>
+              The motivation comes from Kathy Reid's{" "}
+              <a href="https://community.mozilladatacollective.com/why-whisper-still-struggles-with-australian-english-and-what-we-did-about-it/">article on Whisper and Australian English</a>.
+            </li>
+            <li>
+              Speech from <a href="https://commonvoice.mozilla.org/">Mozilla Common Voice</a> 26.0 (CC0).
+            </li>
+            <li>
+              Noise from <a href="https://zenodo.org/records/1227121">DEMAND</a> (CC BY-SA 3.0). The noisy
+              clips here mix the two, so they are CC BY-SA 3.0 too.
+            </li>
+            <li>
+              <a href="https://github.com/openai/whisper">Whisper</a> (MIT), run with{" "}
+              <a href="https://github.com/SYSTRAN/faster-whisper">faster-whisper</a> (MIT). The room
+              is simulated with{" "}
+              <a href="https://github.com/LCAV/pyroomacoustics">pyroomacoustics</a> (MIT).
+            </li>
+            <li>
+              Live transcription uses{" "}
+              <a href="https://github.com/huggingface/transformers.js">transformers.js</a> (Apache
+              2.0).
+            </li>
+          </ul>
+          <p class="repo">
+            {REPO_URL ? (
+              <a class="button secondary" href={REPO_URL}>Code and data <Arrow /></a>
+            ) : (
+              <span class="human">Placeholder: repository link</span>
+            )}
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <ChartTooltip />
+</Layout>
+
+<style>
+  .hero {
+    padding-block: clamp(48px, 8vw, 104px) clamp(24px, 4vw, 48px);
+    background:
+      radial-gradient(1200px 500px at 85% -10%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 70%),
+      var(--page);
+  }
+  .hero-inner {
+    display: grid;
+    gap: 40px;
+    align-items: end;
+  }
+  @media (min-width: 900px) {
+    .hero-inner {
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 64px;
+    }
+  }
+  .hero-text {
+    display: grid;
+    gap: 20px;
+    justify-items: start;
+  }
+  .hero-text > *,
+  .hero-side {
+    transition:
+      opacity 0.7s var(--ease),
+      transform 0.7s var(--ease);
+    @starting-style {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+  }
+  .hero-text > :nth-child(2) {
+    transition-delay: 0.05s;
+  }
+  .hero-text > :nth-child(3) {
+    transition-delay: 0.12s;
+  }
+  .hero-text > :nth-child(4) {
+    transition-delay: 0.2s;
+  }
+  .hero-side {
+    transition-delay: 0.28s;
+  }
+  .hero-text .eyebrow {
+    margin: 0;
+  }
+  .hero-q {
+    font-size: clamp(2.3rem, 1.3rem + 4vw, 4rem);
+    max-width: 18ch;
+    margin: 0;
+  }
+  .hero-a {
+    font-size: clamp(1.1rem, 1rem + 0.6vw, 1.3rem);
+    color: var(--ink-2);
+    max-width: 40ch;
+    margin: 0;
+  }
+  .hero-side {
+    display: grid;
+    gap: 24px;
+  }
+  .hero-side .teaser {
+    max-width: none;
+    margin: 0;
+  }
+  .hero-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--axis);
+  }
+  .stat {
+    display: grid;
+    gap: 4px;
+  }
+  .stat-num {
+    font-family: var(--serif);
+    font-size: clamp(2.8rem, 2rem + 2.6vw, 4.2rem);
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .stat-num.accent {
+    color: var(--accent-ink);
+  }
+  .stat-label {
+    font-size: 0.9rem;
+    color: var(--ink-2);
+  }
+  .stat-note {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+
+  .why {
+    padding-block: clamp(32px, 5vw, 56px);
+    border-top: 1px solid var(--hairline);
+  }
+  .why-inner {
+    display: grid;
+    gap: 16px 64px;
+  }
+  @media (min-width: 900px) {
+    .why-inner {
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr);
+    }
+  }
+  .why-text {
+    max-width: 62ch;
+    color: var(--ink-2);
+    font-size: 1.05rem;
+  }
+  .why-text > p:last-child {
+    margin: 0;
+  }
+  .quote {
+    margin: 0 0 20px;
+    padding-left: 18px;
+    border-left: 2px solid var(--accent);
+  }
+  .quote p {
+    font-family: var(--serif);
+    font-size: clamp(1.25rem, 1.05rem + 0.8vw, 1.6rem);
+    line-height: 1.35;
+    color: var(--ink);
+    margin: 0 0 8px;
+  }
+  .quote footer {
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .lede {
+    color: var(--ink-2);
+    max-width: 60ch;
+    font-size: 1.05rem;
+  }
+  .ears {
+    padding-top: clamp(24px, 3vw, 40px);
+  }
+  .narrow > * {
+    max-width: 720px;
+  }
+  .credits .narrow > * {
+    max-width: 790px;
+  }
+
+  .finding-list {
+    list-style: none;
+    margin: 24px 0 0;
+    padding: 0;
+    display: grid;
+    gap: clamp(32px, 5vw, 56px);
+  }
+  .finding {
+    display: grid;
+    gap: 20px;
+    align-items: center;
+  }
+  .finding-text p {
+    color: var(--ink-2);
+    font-size: 1.05rem;
+    margin: 0;
+  }
+  @media (min-width: 900px) {
+    .finding {
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      gap: 48px;
+    }
+    .finding:nth-child(even) {
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    }
+    .finding:nth-child(even) .finding-text {
+      order: 2;
+    }
+  }
+  .chart-card {
+    padding: clamp(14px, 3vw, 24px);
+  }
+  .real-room .chart-card {
+    max-width: 760px;
+  }
+  .teaser {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    max-width: 760px;
+    margin-top: 16px;
+    padding: 12px;
+    color: inherit;
+    text-decoration: none;
+    transition:
+      border-color 0.2s var(--ease),
+      transform 0.2s var(--ease);
+  }
+  .teaser:hover {
+    border-color: var(--axis);
+    text-decoration: none;
+  }
+  .teaser img {
+    flex: none;
+    width: 132px;
+    height: 99px;
+    object-fit: cover;
+    border-radius: 10px;
+  }
+  .teaser-text {
+    display: grid;
+    gap: 6px;
+    color: var(--ink-2);
+  }
+  .teaser-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .teaser:hover .teaser-link :global(.arrow) {
+    transform: translateX(3px);
+  }
+  @media (max-width: 480px) {
+    .teaser img {
+      width: 96px;
+      height: 72px;
+    }
+  }
+  .caveat {
+    display: inline-flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-size: 0.9rem;
+    color: var(--ink-2);
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+  .caveat svg {
+    flex: none;
+    margin-top: 3px;
+  }
+
+  .how-text {
+    max-width: 64ch;
+    color: var(--ink-2);
+    font-size: 1.05rem;
+  }
+  .how-text p:last-child {
+    margin: 0;
+  }
+  .plain-list {
+    padding-left: 1.1em;
+    display: grid;
+    gap: 10px;
+    color: var(--ink-2);
+    margin: 0;
+  }
+  .plain-list li::marker {
+    color: var(--muted);
+  }
+  .repo {
+    margin-top: 28px;
+  }
+
+</style>

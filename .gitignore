@@ -34,3 +34,11 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Demo site data (Phase 8): written by `earbench export-site` and committed so a deploy
+# needs no datasets. CC0 speech mixed with CC BY-SA DEMAND noise; never TV audio.
+!site/public/data/
+!site/public/data/**/*.mp3
+
+# Original setup photos (the site uses resized copies in site/public/img/)
+/*.jpg

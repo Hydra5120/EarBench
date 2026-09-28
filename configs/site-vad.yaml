@@ -1,0 +1,36 @@
+# VAD-on transcripts for the demo site's 8 clips (Phase 8).
+# Same as full.yaml except: 2 m only, no TV, vad_filter on, and only the curated clips.
+# The VAD-off side comes from the full run (runs/20261002T113029Z-6b10473c79a7), which
+# also ran on cuda/float16, so vad is the only setting that differs.
+# GPU needs `uv sync --extra gpu`.
+manifest_path: data/manifest.csv
+clips_per_group: null
+clip_ids:
+  - common_voice_en_18856879
+  - common_voice_en_17289314
+  - common_voice_en_49226
+  - common_voice_en_19515695
+  - common_voice_en_20520071
+  - common_voice_en_19641744
+  - common_voice_en_23297249
+  - common_voice_en_168243
+distances_m: [2.0]
+noise_files:
+  living: [DLIVING/ch01.wav]
+  kitchen: [DKITCHEN/ch01.wav]
+  cafeteria: [PCAFETER/ch01.wav]
+snr_db: [20.0, 10.0, 5.0, 0.0]
+include_clean: true
+models: [tiny, base, small]
+vad_filter: true
+device: cuda
+compute_type: float16
+usable_wer: 0.20
+bootstrap_iters: 1000
+seed: 0
+room:
+  dims_m: [5.0, 4.0, 2.7]
+  rt60_s: 0.5
+  mic_pos_m: [1.0, 2.0, 1.2]
+  source_height_m: 1.2
+  noise_pos_m: [4.5, 3.5, 1.0]

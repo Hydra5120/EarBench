@@ -11,7 +11,7 @@ from typing import Annotated
 import numpy as np
 import typer
 
-from earbench import audio, manifest, noise
+from earbench import audio, manifest, noise, site_export
 from earbench import fix as fix_mod
 from earbench import record as record_mod
 from earbench import report as report_mod
@@ -20,6 +20,7 @@ from earbench.config import (
     NoiseType,
     PrepareConfig,
     RoomSessionConfig,
+    SiteConfig,
     SweepConfig,
     load_config,
 )
@@ -316,6 +317,53 @@ def compare_fix(
     typer.echo(fix_mod.format_table(cells, "before", "after"))
     if room_before is None:
         typer.echo("room: pending -- rerun with --room-before/--room-after after the session")
+
+
+def _pct(value: float | None) -> str:
+    return "-" if value is None else f"{100 * value:.1f}%"
+
+
+@app.command(name="export-site")
+def export_site(
+    config: Annotated[str, typer.Option(help="Path to site YAML config.")] = "configs/site.yaml",
+) -> None:
+    """Export the demo site's data from existing runs (never transcribes)."""
+    with _exit_on_error():
+        site = load_config(config, SiteConfig)
+        result = site_export.export_site(site)
+    typer.echo(f"wrote {result.out_dir}")
+    typer.echo(f"clips: {result.clips}   transcripts: {result.transcripts}")
+    typer.echo(
+        f"audio: {result.audio_files} MP3s, {result.audio_bytes / 1e6:.2f} MB   "
+        f"json: {result.json_bytes / 1e3:.0f} kB"
+    )
+    for clip_id, size in result.per_clip_bytes.items():
+        typer.echo(f"  {clip_id}: {size / 1e3:.0f} kB")
+    if result.cache_dir_found:
+        typer.echo(
+            f"audio check: {result.cache_matched}/{result.cache_checked} "
+            "audio cells match the transcription cache"
+        )
+    else:
+        typer.echo("audio check: skipped (no transcription cache on this machine)")
+    for clip_id, gain in result.gain_db.items():
+        typer.echo(f"  {clip_id}: turned down {-gain:.1f} dB (whole clip) so the MP3 never clips")
+    hero = result.hero
+    snr = "clean" if hero["snr_db"] is None else f"{hero['snr_db']:g} dB"
+    typer.echo(f"hero: {hero['model']}, {hero['noise_type']} {snr}, {hero['distance_m']:g} m")
+    for group in ("older", "younger"):
+        point = hero[group]
+        typer.echo(
+            f"  {group}: WER {_pct(point['wer'])} "
+            f"[{_pct(point['ci_low'])}-{_pct(point['ci_high'])}], "
+            f"usable {_pct(point['usable_rate'])}, n={point['n_clips']}"
+        )
+    typer.echo("room vs sim (WER):")
+    for row in result.room_rows:
+        typer.echo(
+            f"  {row['distance_m']:g} m {row['condition']:<5} room {_pct(row['room_wer'])}  "
+            f"sim {_pct(row['sim_wer'])}"
+        )
 
 
 if __name__ == "__main__":

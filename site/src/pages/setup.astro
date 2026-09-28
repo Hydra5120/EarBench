@@ -1,0 +1,354 @@
+---
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import Layout from "../layouts/Layout.astro";
+import Arrow from "../components/Arrow.astro";
+import indexJson from "../../public/data/index.json";
+import roomJson from "../../public/data/room.json";
+import type { Room, SiteIndex } from "../lib/data";
+
+const index = indexJson as SiteIndex;
+const room = roomJson as Room;
+
+// Code facts are read from the repo at build time, so they stay true as it changes.
+const repo = resolve(process.cwd(), "..");
+const pyFiles = (dir: string) =>
+  readdirSync(join(repo, dir))
+    .filter((f) => f.endsWith(".py") && f !== "__init__.py")
+    .map((f) => ({ name: f, text: readFileSync(join(repo, dir, f), "utf-8") }));
+const lineCount = (text: string) => text.split("\n").filter((l) => l.trim()).length;
+const modules = pyFiles("src/earbench");
+const tests = pyFiles("tests");
+const codeLines = modules.reduce((n, m) => n + lineCount(m.text), 0);
+const testLines = tests.reduce((n, t) => n + lineCount(t.text), 0);
+const testCount = tests.reduce((n, t) => n + (t.text.match(/^\s*def test_/gm) ?? []).length, 0);
+const round100 = (n: number) => (Math.round(n / 100) * 100).toLocaleString("en-AU");
+
+const benchmark = index.site_manifest.runs.find((r) => r.role === "benchmark");
+const recordings = room.rows.reduce((n, r) => n + r.n_clips, 0);
+const tvRows = room.rows.filter((r) => r.condition === "tv").sort((a, b) => a.distance_m - b.distance_m);
+const nearSnr = tvRows[0]?.mean_snr_db;
+const farSnr = tvRows.at(-1)?.mean_snr_db;
+const audioConditions = 1 + (index.noise_types.filter((n) => n.audio).length * (index.levels.length - 1));
+const audioChecks = index.clips.length * audioConditions * index.models.length * 2;
+
+// Repo map: [indent, name, note]. Notes are plain; no line counts.
+const TREE: [number, string, string][] = [
+  [0, "earbench/", ""],
+  [1, "src/earbench/", "the Python package"],
+  [2, "config.py", "settings, checked when a config loads"],
+  [2, "manifest.py", "picks the speakers from Common Voice"],
+  [2, "audio.py", "loading, resampling, speech level"],
+  [2, "room.py", "the virtual room"],
+  [2, "noise.py", "mixes noise in at an exact level"],
+  [2, "transcribe.py", "Whisper, the cache and a test fake"],
+  [2, "score.py", "word error rate, alignment, intervals"],
+  [2, "sweep.py", "runs every combination"],
+  [2, "record.py", "the real-room session"],
+  [2, "report.py", "charts and HTML reports"],
+  [2, "fix.py", "VAD before and after"],
+  [2, "site_export.py", "data for this website"],
+  [2, "cli.py", "the earbench command"],
+  [1, "tests/", ""],
+  [1, "configs/", "one YAML file per run"],
+  [1, "site/", "this website"],
+];
+const treeLines = TREE.map(([depth, name, note], i) => {
+  const last = (d: number, from: number) => {
+    for (let j = from + 1; j < TREE.length; j++) {
+      if (TREE[j][0] < d) return true;
+      if (TREE[j][0] === d) return false;
+    }
+    return true;
+  };
+  let prefix = "";
+  for (let d = 1; d < depth; d++) {
+    // Draw a rail for each ancestor level that still has siblings below.
+    let k = i;
+    while (k >= 0 && TREE[k][0] !== d) k--;
+    prefix += last(d, k) ? "    " : "│   ";
+  }
+  if (depth > 0) prefix += last(depth, i) ? "└── " : "├── ";
+  return { prefix, name, note: name === "tests/" ? `${testCount} test functions` : note };
+});
+const noteColumn = Math.max(...treeLines.map((l) => l.prefix.length + l.name.length)) + 3;
+const STAGES: [string, string][] = [
+  ["Common Voice clips", "manifest.py"],
+  ["Virtual or real room", "room.py · record.py"],
+  ["Noise at an exact level", "noise.py"],
+  ["Whisper", "transcribe.py"],
+  ["Score", "score.py"],
+  ["Charts and this site", "report.py · site_export.py"],
+];
+---
+
+<Layout
+  title="How I tested it · EarBench"
+  description="The real-room setup, the simulation and the code behind EarBench."
+  active="setup"
+>
+  <main>
+    <header class="intro">
+      <div class="wrap">
+        <h1>How I tested it</h1>
+        <p class="lede">
+          Most of the results come from a simulated room, which let me try every combination of
+          voice, distance, noise and model. I also ran the test in a real room to see whether the
+          simulation could be trusted.
+        </p>
+      </div>
+    </header>
+
+    <section class="block">
+      <div class="wrap">
+        <h2>The real room</h2>
+        <figure class="photo wide">
+          <img
+            src="/img/setup-1m-wide-800.webp"
+            srcset="/img/setup-1m-wide-800.webp 800w, /img/setup-1m-wide-1600.webp 1600w"
+            sizes="(min-width: 1232px) 1200px, calc(100vw - 32px)"
+            width="1600"
+            height="1200"
+            alt="A desk with a PC and a monitor with a webcam on top. A line marked 1 m runs from the webcam to a MacBook on an office chair."
+            loading="eager"
+            decoding="async"
+          />
+          <figcaption>The webcam on the monitor is the robot's ear. The MacBook on the chair is the person.</figcaption>
+        </figure>
+        <div class="two-col">
+          <p>
+            {`A Logitech C920 webcam on my monitor stood in for the robot's ear, and a MacBook Pro ` +
+              `played the voices through its own speakers. On a phone sound meter the voice came in ` +
+              `at about 60 dBA and the TV at about 55. I played the same ` +
+              `${room.rows[0]?.n_clips ?? ""} sentences from 1, 2 and 3 m away, first with the TV ` +
+              `off and then with it on, for ${recordings} recordings in all.`}
+          </p>
+          <p>
+            The laptop and the PC never talk to each other. Each playlist starts and ends with a
+            chirp, and the PC finds that chirp in its recording to cut out every sentence. On test
+            recordings the cuts land within a millisecond. Each sentence also has 1.5 seconds of
+            silence before it, which gives a clean sample of the background noise.
+            {nearSnr && farSnr &&
+              ` With the TV on, the voice was ${Math.round(nearSnr)} dB above the noise at 1 m, ` +
+                `and the gap shrank to ${Math.round(farSnr)} dB at 3 m.`}
+          </p>
+        </div>
+        <div class="photo-row">
+          {[1, 2, 3].map((d) => (
+            <figure class="photo">
+              <img
+                src={`/img/setup-${d}m-400.webp`}
+                srcset={`/img/setup-${d}m-400.webp 400w, /img/setup-${d}m-800.webp 800w`}
+                sizes="(min-width: 900px) 290px, 30vw"
+                width="400"
+                height={d === 1 ? 577 : d === 2 ? 743 : 756}
+                alt={`The MacBook ${d} m from the webcam${d === 1 ? ", on the chair" : ", on the bed"}.`}
+                loading="lazy"
+                decoding="async"
+              />
+              <figcaption>{d} m</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <h2>The simulation</h2>
+        <p class="body">
+          {`Each sentence goes through a virtual 5 × 4 m room with half a second of echo, with the ` +
+            `voice and the noise coming from different spots. The noise is scaled so the voice sits ` +
+            `exactly the chosen number of decibels above it, and a test checks that every mix lands ` +
+            `within 0.1 dB.`}
+          {benchmark &&
+            ` The full run came to ${benchmark.n_results.toLocaleString("en-AU")} transcriptions. ` +
+              `Each one is cached under a fingerprint of its exact audio, so a rerun only does the ` +
+              `work that's missing.`}
+        </p>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <h2>The code</h2>
+        <ol class="pipeline" aria-label="How a clip moves through the code">
+          {STAGES.map(([label, mod], i) => (
+            <li>
+              <span class="stage">{label}</span>
+              <code>{mod}</code>
+              {i < STAGES.length - 1 && <Arrow />}
+            </li>
+          ))}
+        </ol>
+        <div class="two-col">
+          <div>
+            <p>
+              {`It's a Python package with a single earbench command and a subcommand for each ` +
+                `step: about ${round100(codeLines)} lines of code, with ${round100(testLines)} ` +
+                `lines of tests across ${testCount} test functions. The tests use a fake ` +
+                `transcriber in place of Whisper, so they run without the real data or a model ` +
+                `download, and they run with linting and type checks on every push.`}
+            </p>
+            <p>
+              {`Nothing on the results page is typed by hand. One command reads the results and ` +
+                `rebuilds every clip you can play by sending it back through the simulation, then ` +
+                `checks the rebuilt audio against the transcription cache. All ${audioChecks} ` +
+                `match what Whisper actually heard. The word highlights come from the scorer's own ` +
+                `alignment, so they always add up to the error count.`}
+            </p>
+            <p>
+              The site is static: Astro with one small Svelte component for the panel, and about
+              24 kB of compressed JavaScript.
+            </p>
+          </div>
+          <pre class="tree" aria-label="Repository layout">{treeLines.map((l) => (
+            <span class="tree-line"><span class="rail">{l.prefix}</span><span class="name">{l.name}</span>{l.note && <span class="note">{" ".repeat(noteColumn - l.prefix.length - l.name.length)}<span class="hash"># </span>{l.note}</span>}{"\n"}</span>
+          ))}</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="block last">
+      <div class="wrap">
+        <a class="button secondary" href="/">Back to the results <Arrow /></a>
+      </div>
+    </section>
+  </main>
+</Layout>
+
+<style>
+  .intro {
+    padding-block: clamp(40px, 7vw, 88px) clamp(8px, 2vw, 16px);
+  }
+  .intro h1 {
+    font-size: clamp(2.3rem, 1.3rem + 4vw, 3.8rem);
+    margin-bottom: 16px;
+  }
+  .lede {
+    color: var(--ink-2);
+    max-width: 60ch;
+    font-size: clamp(1.05rem, 1rem + 0.4vw, 1.2rem);
+    margin: 0;
+  }
+  .block {
+    padding-block: clamp(32px, 5vw, 56px);
+  }
+  .block.last {
+    padding-top: 0;
+  }
+  .block p {
+    color: var(--ink-2);
+  }
+  .body {
+    max-width: 68ch;
+  }
+  .two-col {
+    display: grid;
+    gap: 8px 48px;
+  }
+  @media (min-width: 900px) {
+    .two-col {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .photo {
+    margin: 0;
+  }
+  .photo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--ring);
+    background: var(--surface-2);
+  }
+  .photo figcaption {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .photo.wide {
+    margin-bottom: 24px;
+  }
+  .photo-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(8px, 2vw, 20px);
+    margin-top: 20px;
+    max-width: 900px;
+    align-items: end;
+  }
+  .photo-row img {
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    object-position: center top;
+  }
+  .photo-row figcaption {
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    color: var(--ink);
+  }
+
+  .pipeline {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 0;
+  }
+  .pipeline li {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 14px;
+    padding-right: 14px;
+  }
+  .stage {
+    grid-column: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .pipeline code {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 0.75rem;
+    color: var(--muted);
+    padding: 4px 2px 0;
+  }
+  .pipeline :global(.arrow) {
+    grid-column: 2;
+    grid-row: 1;
+    color: var(--muted);
+  }
+
+  .tree {
+    margin: 0;
+    padding: 20px 22px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    font: 0.85rem/1.75 ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    overflow-x: auto;
+    align-self: start;
+  }
+  .tree-line {
+    white-space: pre;
+  }
+  .rail {
+    color: var(--axis);
+  }
+  .name {
+    color: var(--ink);
+  }
+  .note {
+    color: var(--muted);
+  }
+</style>

@@ -1,0 +1,54 @@
+# Demo site export (Phase 8): `uv run earbench export-site --config configs/site.yaml`.
+# Reads existing runs only; never transcribes. Writes site/public/data/.
+full_run: runs/20261002T113029Z-6b10473c79a7   # tiny, base, small; VAD off
+vad_run: runs/20261003T133747Z-7c70245b3666     # from: earbench sweep --config configs/site-vad.yaml
+room_compare: recordings/20260930T091500Z/compare-summary.csv
+room_label: "room layout approximated; read the gaps as direction, not exact size."
+distance_m: 2.0
+models: [tiny, base, small]
+audio_noise_types: [living, kitchen, cafeteria]
+text_only_noise_types: [tv]   # YouTube audio: transcripts only, never exported as audio
+noise_labels:
+  living: Living room
+  kitchen: Kitchen
+  cafeteria: Café
+  tv: TV
+# Loudness slider stops, quietest noise first. snr_db: null = no noise.
+levels:
+  - {snr_db: null, label: "No noise"}
+  - {snr_db: 20.0, label: "Noise far quieter than the speaker"}
+  - {snr_db: 10.0, label: "Noise clearly quieter than the speaker"}
+  - {snr_db: 5.0, label: "Noise a little quieter than the speaker"}
+  - {snr_db: 0.0, label: "Noise as loud as the speaker"}
+# The 8 curated clips (all 2 m). featured_* = the condition the panel opens on.
+clips:
+  # older
+  - {id: common_voice_en_18856879, featured_noise: living, featured_snr_db: 0.0}
+  - {id: common_voice_en_17289314, featured_noise: cafeteria, featured_snr_db: 0.0}
+  - {id: common_voice_en_49226, featured_noise: kitchen, featured_snr_db: 0.0}
+  - {id: common_voice_en_19515695, featured_noise: cafeteria, featured_snr_db: 0.0}
+  # younger
+  - {id: common_voice_en_20520071, featured_noise: living, featured_snr_db: 0.0}
+  - {id: common_voice_en_19641744, featured_noise: cafeteria, featured_snr_db: 0.0}
+  - {id: common_voice_en_23297249, featured_noise: cafeteria, featured_snr_db: 0.0}
+  - {id: common_voice_en_168243, featured_noise: kitchen, featured_snr_db: 0.0}
+# Hero number (all 50+50 clips, from summary.csv).
+hero: {model: small, noise_type: tv, snr_db: 10.0}
+# Findings charts (from summary.csv), in page order.
+charts:
+  - id: noise_types
+    title: "Usable sentences for older speakers in each kind of noise (Whisper small)"
+    series: noise_type
+    model: small
+    age_group: older
+  - id: model_size
+    title: "Usable sentences for older speakers in café noise, by model"
+    series: model
+    age_group: older
+    noise_type: cafeteria
+  - id: age_gap
+    title: "Usable sentences in café noise for older and younger speakers (Whisper small)"
+    series: age_group
+    model: small
+    noise_type: cafeteria
+out_dir: site/public/data

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 AgeGroup = Literal["older", "younger"]
 NoiseType = Literal["none", "tv", "living", "kitchen", "cafeteria"]
@@ -60,6 +60,7 @@ class SweepConfig(BaseModel):
 
     manifest_path: Path
     clips_per_group: int | None = None
+    clip_ids: list[str] | None = None  # restrict to exactly these clips (e.g. the site's 8)
     distances_m: list[float] = [1.0, 2.0, 3.0]
     noise_files: dict[NoiseType, list[Path]] = Field(default_factory=dict)
     snr_db: list[float] = [20.0, 10.0, 5.0, 0.0]
@@ -75,6 +76,79 @@ class SweepConfig(BaseModel):
     runs_dir: Path = Path("runs")
     report: ReportOptions = ReportOptions()
     seed: int = 0
+
+
+class SiteClip(BaseModel):
+    """One curated demo clip and the condition the site opens it on."""
+
+    id: str
+    featured_noise: NoiseType
+    featured_snr_db: float | None = None
+
+
+class SiteHero(BaseModel):
+    """The condition whose summary.csv numbers back the hero sentence."""
+
+    model: str
+    noise_type: NoiseType
+    snr_db: float | None = None
+
+
+class SiteChart(BaseModel):
+    """One findings chart: WER vs noise level, one line per `series` value.
+
+    The two dimensions that are not the series are fixed by the other fields.
+    """
+
+    id: str
+    title: str
+    series: Literal["age_group", "model", "noise_type"]
+    model: str | None = None
+    age_group: AgeGroup | None = None
+    noise_type: NoiseType | None = None
+
+
+class SiteLevel(BaseModel):
+    """A loudness-slider stop: an SNR (None = no noise) and its plain label."""
+
+    snr_db: float | None
+    label: str
+
+
+class SiteConfig(BaseModel):
+    """What `earbench export-site` reads and where the demo site's data goes."""
+
+    full_run: Path
+    vad_run: Path
+    room_compare: Path
+    room_label: str
+    distance_m: float = 2.0
+    models: list[str] = ["tiny", "base", "small"]
+    audio_noise_types: list[NoiseType] = ["living", "kitchen", "cafeteria"]
+    text_only_noise_types: list[NoiseType] = ["tv"]  # transcripts only, never audio
+    levels: list[SiteLevel]
+    noise_labels: dict[NoiseType, str]
+    clips: list[SiteClip]
+    hero: SiteHero
+    charts: list[SiteChart] = []
+    transcriber_name: str = "faster-whisper"  # part of the transcription cache key
+    tv_note: str = "audio not shown: copyrighted TV recording"
+    out_dir: Path = Path("site/public/data")
+
+    @model_validator(mode="after")
+    def _check(self) -> SiteConfig:
+        if "tv" in self.audio_noise_types:
+            raise ValueError("audio_noise_types must not include tv (YouTube audio)")
+        if "none" in self.audio_noise_types or "none" in self.text_only_noise_types:
+            raise ValueError(
+                "the clean condition comes from levels (snr_db: null), not noise types"
+            )
+        if not any(level.snr_db is None for level in self.levels):
+            raise ValueError("levels needs a no-noise stop (snr_db: null)")
+        ids = [clip.id for clip in self.clips]
+        if len(set(ids)) != len(ids):
+            raise ValueError("clips has duplicate ids")
+        return self
 
 
 class RoomSessionConfig(BaseModel):

@@ -1,0 +1,25 @@
+# Cross-origin isolation lets the live Whisper panel use multi-threaded WebAssembly.
+# "credentialless" still allows model files from Hugging Face and the jsDelivr CDN.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Content-hashed files never change: cache for a year.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+/data/audio/*
+  Cache-Control: public, max-age=31536000, immutable
+/data/clips/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Fixed names that change on re-export or re-upload: revalidate.
+/data/index.json
+  Cache-Control: public, max-age=300, must-revalidate
+/data/charts.json
+  Cache-Control: public, max-age=300, must-revalidate
+/data/room.json
+  Cache-Control: public, max-age=300, must-revalidate
+/img/*
+  Cache-Control: public, max-age=86400

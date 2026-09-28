@@ -42,6 +42,14 @@ def test_select_clips_respects_limit_and_seed(sweep_env) -> None:
     assert len(sweep.select_clips(rows, clips_per_group=None, seed=0)) == 6
 
 
+def test_select_clips_restricts_to_clip_ids(sweep_env) -> None:
+    _cfg, rows = sweep_env(n_per_group=3)
+    picks = sweep.select_clips(rows, None, seed=0, clip_ids=["younger_2", "older_0"])
+    assert [row.clip_id for row in picks] == ["older_0", "younger_2"]
+    with pytest.raises(ValueError, match="not in the manifest: nope"):
+        sweep.select_clips(rows, None, seed=0, clip_ids=["older_0", "nope"])
+
+
 def test_build_grid_has_clean_conditions(sweep_env) -> None:
     cfg, rows = sweep_env(n_per_group=1, distances_m=(1.0, 2.0), snr_db=(10.0, 0.0))
     conditions = sweep.build_grid(cfg, rows)
@@ -142,7 +150,7 @@ def _model_outer_reference(cfg: SweepConfig, transcriber: Transcriber) -> list[t
             noise_file = None
             if condition.noise_type != "none":
                 noise_file = audio.load_16k(cfg.noise_files[condition.noise_type][0])
-            seed = sweep._condition_seed(cfg.seed, condition.clip.clip_id, condition.noise_type)
+            seed = sweep.condition_seed(cfg.seed, condition.clip.clip_id, condition.noise_type)
             mixed, _ = noise.make_condition(
                 clip, condition.distance_m, cfg.room, noise_file, condition.snr_db, seed
             )

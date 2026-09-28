@@ -52,9 +52,23 @@ class SweepResult:
 
 
 def select_clips(
-    rows: Sequence[manifest.ManifestRow], clips_per_group: int | None, seed: int
+    rows: Sequence[manifest.ManifestRow],
+    clips_per_group: int | None,
+    seed: int,
+    clip_ids: Sequence[str] | None = None,
 ) -> list[manifest.ManifestRow]:
-    """Pick `clips_per_group` clips per age group with a seeded, order-independent shuffle."""
+    """Pick `clips_per_group` clips per age group with a seeded, order-independent shuffle.
+
+    `clip_ids` first restricts the pool to exactly those clips; every one must be
+    in the manifest.
+    """
+    if clip_ids is not None:
+        known = {row.clip_id for row in rows}
+        missing = sorted(set(clip_ids) - known)
+        if missing:
+            raise ValueError(f"clip_ids not in the manifest: {', '.join(missing)}")
+        wanted = set(clip_ids)
+        rows = [row for row in rows if row.clip_id in wanted]
     if clips_per_group is None:
         return sorted(rows, key=lambda row: (row.age_group, row.clip_id))
     by_group: dict[str, list[manifest.ManifestRow]] = {}
@@ -96,7 +110,7 @@ def load_noise(cfg: SweepConfig, noise_type: NoiseType) -> np.ndarray:
     return audio.load_16k(paths[0])
 
 
-def _condition_seed(seed: int, clip_id: str, noise_type: str) -> int:
+def condition_seed(seed: int, clip_id: str, noise_type: str) -> int:
     """Stable per-condition noise offset seed, independent of grid order."""
     digest = hashlib.sha256(f"{seed}:{clip_id}:{noise_type}".encode()).digest()
     return int.from_bytes(digest[:4], "little")
@@ -145,7 +159,7 @@ def _noise_at_mic(
     The noise source does not move with distance, so distance is not in the key.
     The segment does depend on the clip length and seed, so both are.
     """
-    seed = _condition_seed(cfg.seed, condition.clip.clip_id, condition.noise_type)
+    seed = condition_seed(cfg.seed, condition.clip.clip_id, condition.noise_type)
     key = (condition.noise_type, seed, n_samples)
     if key not in noise_cache:
         noise_file = noise_audio[condition.noise_type]
@@ -199,7 +213,9 @@ def run_sweep(
     """Run the whole grid, write results.csv/config.yaml/summary.csv, return the result."""
     run_id = run_id or _new_run_id(cfg)
     run_dir = cfg.runs_dir / run_id
-    clips = select_clips(manifest.read_manifest(cfg.manifest_path), cfg.clips_per_group, cfg.seed)
+    clips = select_clips(
+        manifest.read_manifest(cfg.manifest_path), cfg.clips_per_group, cfg.seed, cfg.clip_ids
+    )
     conditions = build_grid(cfg, clips)
     # Load every noise file before any model: a missing file fails now, not hours in.
     noise_audio: dict[NoiseType, np.ndarray] = {

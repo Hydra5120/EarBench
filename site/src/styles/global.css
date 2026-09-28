@@ -1,0 +1,525 @@
+/* Design tokens: warm ivory/charcoal neutrals, clay accent, serif display type.
+   Light by default; dark via the OS setting or [data-theme="dark"]. */
+:root {
+  color-scheme: light;
+  --page: #faf9f5;
+  --surface: #fffefb;
+  --surface-2: #f0eee6;
+  --surface-3: #e8e6dc;
+  --ink: #141413;
+  --ink-2: #57564f;
+  --muted: #7d7b72;
+  --hairline: #e6e3d8;
+  --axis: #c9c6b9;
+  --ring: rgba(20, 20, 19, 0.08);
+  --accent: #c6613f;
+  --accent-ink: #a8502f;
+  --accent-soft: #f6e3da;
+  --on-accent: #ffffff;
+
+  /* Transcript marks: each also has a non-colour cue (wavy, strike, underline). */
+  --wrong-bg: #f8e7c4;
+  --wrong-line: #9a6a00;
+  --drop-bg: #f6dcd6;
+  --drop-line: #a8322a;
+  --ins-bg: #dde7f4;
+  --ins-line: #2f5f9e;
+  --good: #3f7a2e;
+  --good-bg: #e4efdc;
+  --bad: #a8322a;
+  --bad-bg: #f6dcd6;
+
+  /* Chart series, validated all-pairs: clay, blue, teal, gold. */
+  --s1: #c6613f;
+  --s2: #2f6fb5;
+  --s3: #1a9c7a;
+  --s4: #d4a017;
+
+  --radius: 16px;
+  --radius-md: 12px;
+  --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(20, 20, 19, 0.04), 0 10px 30px -12px rgba(20, 20, 19, 0.1);
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.06), 0 1px 1px rgba(20, 20, 19, 0.04);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #1f1e1d;
+    --surface: #262624;
+    --surface-2: #30302e;
+    --surface-3: #3a3936;
+    --ink: #faf9f5;
+    --ink-2: #c2c0b6;
+    --muted: #9c9a91;
+    --hairline: #3a3936;
+    --axis: #4b4a45;
+    --ring: rgba(250, 249, 245, 0.08);
+    --accent: #d97757;
+    --accent-ink: #e8927a;
+    --accent-soft: #4a2e24;
+    --on-accent: #1f1e1d;
+    --wrong-bg: #4a3814;
+    --wrong-line: #e3b04b;
+    --drop-bg: #4d2622;
+    --drop-line: #f0938a;
+    --ins-bg: #22324a;
+    --ins-line: #8fb4e8;
+    --good: #8cc47a;
+    --good-bg: #26361f;
+    --bad: #f0938a;
+    --bad-bg: #4d2622;
+    --s1: #c45a3a;
+    --s2: #4a86cc;
+    --s3: #1f9474;
+    --s4: #a99211;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -12px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #1f1e1d;
+  --surface: #262624;
+  --surface-2: #30302e;
+  --surface-3: #3a3936;
+  --ink: #faf9f5;
+  --ink-2: #c2c0b6;
+  --muted: #9c9a91;
+  --hairline: #3a3936;
+  --axis: #4b4a45;
+  --ring: rgba(250, 249, 245, 0.08);
+  --accent: #d97757;
+  --accent-ink: #e8927a;
+  --accent-soft: #4a2e24;
+  --on-accent: #1f1e1d;
+  --wrong-bg: #4a3814;
+  --wrong-line: #e3b04b;
+  --drop-bg: #4d2622;
+  --drop-line: #f0938a;
+  --ins-bg: #22324a;
+  --ins-line: #8fb4e8;
+  --good: #8cc47a;
+  --good-bg: #26361f;
+  --bad: #f0938a;
+  --bad-bg: #4d2622;
+  --s1: #c45a3a;
+  --s2: #4a86cc;
+  --s3: #1f9474;
+  --s4: #a99211;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -12px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 400 1rem/1.6 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a {
+  color: var(--accent-ink);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--serif);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  margin: 0 0 0.5em;
+  text-wrap: balance;
+}
+h2 {
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.6rem);
+}
+h3 {
+  font-size: 1.3rem;
+}
+p {
+  margin: 0 0 1em;
+  text-wrap: pretty;
+}
+
+.wrap {
+  width: min(1200px, 100% - 32px);
+  margin-inline: auto;
+}
+
+section {
+  padding-block: clamp(40px, 6vw, 72px);
+}
+
+.eyebrow {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--accent-ink);
+  margin-bottom: 0.75em;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* Placeholder copy the human will replace. */
+.human {
+  outline: 2px dashed #d97706;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.human::before {
+  content: "HUMAN";
+  font: 700 0.65rem/1 var(--font);
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: #d97706;
+  padding: 3px 6px;
+  border-radius: 4px;
+  margin-right: 8px;
+  vertical-align: 0.15em;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Scroll-driven reveal: compositor-only (opacity + transform), CSS only. */
+@supports (animation-timeline: view()) {
+  .reveal {
+    animation: reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 40%;
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Charts (build-time SVG). Marks wear series colours; all text wears ink tokens. */
+.chart {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.chart figcaption {
+  font-weight: 600;
+  font-size: 0.98rem;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+}
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.band-swatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--ink);
+  opacity: 0.12;
+  display: inline-block;
+}
+.whisker-swatch {
+  width: 16px;
+  height: 2px;
+  background: var(--ink-2);
+  display: inline-block;
+}
+.chart-box {
+  position: relative;
+}
+.chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.chart .grid {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+.chart .tick {
+  fill: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.chart .axis-title {
+  fill: var(--muted);
+  font-size: 12px;
+}
+.chart .row-label {
+  fill: var(--ink-2);
+  font-size: 13px;
+}
+.chart .usable-line {
+  stroke: var(--good);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+.chart .usable-text {
+  fill: var(--good);
+  font-size: 11px;
+  font-weight: 600;
+}
+.chart .band {
+  opacity: 0.1;
+}
+.chart .line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart .dot {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.chart .whisker {
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.chart .end-label {
+  fill: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.chart .crosshair {
+  stroke: var(--axis);
+  stroke-width: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.chart .hit {
+  fill: transparent;
+  cursor: crosshair;
+}
+.chart .tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  min-width: 180px;
+  transform: translate(-50%, calc(-100% - 10px));
+  z-index: 2;
+}
+.chart .tooltip strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.chart .tooltip table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.chart .tooltip td {
+  padding: 1px 6px 1px 0;
+  white-space: nowrap;
+}
+.chart .tooltip td:nth-child(3),
+.chart .tooltip td:nth-child(4) {
+  color: var(--muted);
+}
+
+/* Lines draw themselves in once, on scroll into view (CSS only). */
+@supports (animation-timeline: view()) {
+  .chart .line {
+    stroke-dasharray: 1;
+    animation: draw linear both;
+    animation-timeline: view();
+    animation-range: entry 10% cover 40%;
+  }
+}
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.table-view summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  width: fit-content;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
+  margin-left: -6px;
+  border-radius: 6px;
+  transition: background-color 0.15s var(--ease);
+}
+.table-view summary::-webkit-details-marker {
+  display: none;
+}
+.table-view summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.2s var(--ease);
+}
+.table-view[open] summary::before {
+  transform: rotate(45deg);
+}
+.table-view summary:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.table-view table {
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+.table-view th,
+.table-view td {
+  text-align: left;
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.table-view small {
+  color: var(--muted);
+}
+.table-view {
+  overflow-x: auto;
+}
+
+.mark-swatch {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+}
+
+ul.human::before {
+  justify-self: start;
+  display: table;
+  margin-bottom: 6px;
+}
+
+/* Buttons: softly rounded rectangles. Primary is ink on ivory (inverted in dark). */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--ink);
+  color: var(--page);
+  font: 500 0.95rem/1.2 var(--font);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    transform 0.15s var(--ease);
+}
+.button:hover {
+  background: color-mix(in oklab, var(--ink) 86%, var(--page));
+  text-decoration: none;
+}
+.button:active {
+  transform: translateY(1px);
+}
+.button.secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--axis);
+}
+.button.secondary:hover {
+  background: var(--surface-2);
+}
+.arrow {
+  flex: none;
+  transform: rotate(var(--r, 0deg));
+  transition: transform 0.25s var(--ease);
+}
+.button:hover .arrow,
+a:hover > .arrow {
+  transform: rotate(var(--r, 0deg)) translateX(3px);
+}

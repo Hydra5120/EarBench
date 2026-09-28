@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 import numpy as np
 from jiwer import process_words
@@ -51,6 +51,60 @@ def score_clip(reference: str, hypothesis: str) -> ClipScore:
     ref_words = result.hits + result.substitutions + result.deletions
     wer = errors / ref_words if ref_words else 0.0
     return ClipScore(reference=ref, hypothesis=hyp, errors=errors, ref_words=ref_words, wer=wer)
+
+
+AlignOp = Literal["ok", "sub", "del", "ins"]
+_JIWER_OPS: dict[str, AlignOp] = {
+    "equal": "ok",
+    "substitute": "sub",
+    "delete": "del",
+    "insert": "ins",
+}
+
+
+@dataclass(frozen=True)
+class Token:
+    """One aligned word: correct, substituted, dropped (del) or invented (ins)."""
+
+    op: AlignOp
+    ref: str | None
+    hyp: str | None
+
+
+def align(reference: str, hypothesis: str) -> list[Token]:
+    """Word alignment from the same normaliser and jiwer call `score_clip` uses.
+
+    Sub + del + ins counts always equal `score_clip(...).errors`, so highlights
+    built from this match the WER.
+    """
+    return align_normalised(normalise(reference), normalise(hypothesis))
+
+
+def align_normalised(ref: str, hyp: str) -> list[Token]:
+    """Align texts that are already normalised (e.g. results.csv columns).
+
+    The normaliser is not idempotent (a stray " ." survives once but not twice),
+    so stored texts must be aligned as they are, not normalised again.
+    """
+    ref_words = ref.split()
+    hyp_words = hyp.split()
+    if not ref_words:
+        return [Token("ins", None, word) for word in hyp_words]
+    if not hyp_words:
+        return [Token("del", word, None) for word in ref_words]
+    result = process_words(ref, hyp)
+    tokens: list[Token] = []
+    for chunk in result.alignments[0]:
+        op = _JIWER_OPS[chunk.type]
+        refs = ref_words[chunk.ref_start_idx : chunk.ref_end_idx]
+        hyps = hyp_words[chunk.hyp_start_idx : chunk.hyp_end_idx]
+        if op in ("ok", "sub"):
+            tokens.extend(Token(op, r, h) for r, h in zip(refs, hyps, strict=True))
+        elif op == "del":
+            tokens.extend(Token("del", r, None) for r in refs)
+        else:
+            tokens.extend(Token("ins", None, h) for h in hyps)
+    return tokens
 
 
 def corpus_wer(scored: Sequence[Scored]) -> float:

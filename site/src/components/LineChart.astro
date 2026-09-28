@@ -1,0 +1,151 @@
+---
+// Share of sentences usable vs noise level, one line per series, 95% interval bands. Built at build time;
+// the hover tooltip is a tiny shared script (see ChartTooltip.astro).
+import { noiseVsVoice, pct, type Finding } from "../lib/data";
+
+interface Props {
+  finding: Finding;
+  labels: Record<string, string>;
+}
+const { finding, labels } = Astro.props;
+
+const W = 640;
+const H = 320;
+const M = { top: 16, right: 96, bottom: 44, left: 52 };
+const iw = W - M.left - M.right;
+const ih = H - M.top - M.bottom;
+
+const levels = finding.series[0].points.map((p) => p.snr_db);
+const top = 1;
+const ticks = [0, 0.25, 0.5, 0.75, 1];
+
+const x = (i: number) => M.left + (levels.length === 1 ? iw / 2 : (i / (levels.length - 1)) * iw);
+const y = (v: number) => M.top + ih - (v / top) * ih;
+const f = (n: number) => n.toFixed(1);
+
+const series = finding.series.map((s, si) => {
+  const line = s.points
+    .map((p, i) => `${i ? "L" : "M"}${f(x(i))},${f(y(p.usable_rate))}`)
+    .join("");
+  const upper = s.points.map((p, i) => `${f(x(i))},${f(y(p.usable_high))}`);
+  const lower = s.points.map((p, i) => `${f(x(i))},${f(y(p.usable_low))}`).reverse();
+  const band = `M${upper.join("L")}L${lower.join("L")}Z`;
+  return { key: s.key, label: labels[s.key] ?? s.key, color: `var(--s${si + 1})`, line, band, points: s.points };
+});
+
+// End labels: sorted by height, nudged apart so they never overlap.
+const ends = series
+  .map((s) => ({ label: s.label, y: y(s.points[s.points.length - 1].usable_rate) }))
+  .sort((a, b) => a.y - b.y);
+for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 15);
+for (let i = ends.length - 2; i >= 0; i--) ends[i].y = Math.min(ends[i].y, ends[i + 1].y - 15);
+
+const tips = levels.map((snr, i) =>
+  JSON.stringify({
+    title: snr === null ? "No noise" : `Noise at ${noiseVsVoice(snr)}`,
+    rows: series.map((s) => {
+      const p = s.points[i];
+      return [
+        s.label,
+        pct(p.usable_rate),
+        `${p.usable_count} of ${p.n_clips}`,
+        `${pct(p.usable_low)}–${pct(p.usable_high)}`,
+      ];
+    }),
+  }),
+);
+const titleId = `chart-${finding.id}`;
+---
+
+<figure class="chart" data-chart>
+  <figcaption id={titleId}>{finding.title}</figcaption>
+  <ul class="chart-legend">
+    {series.map((s) => (
+      <li>
+        <span class="swatch" style={`background:${s.color}`} />
+        {s.label}
+      </li>
+    ))}
+    <li class="legend-band"><span class="band-swatch" />95% interval</li>
+  </ul>
+  <div class="chart-box">
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby={titleId}>
+      {ticks.map((t) => (
+        <g>
+          <line x1={M.left} x2={M.left + iw} y1={y(t)} y2={y(t)} class="grid" />
+          <text x={M.left - 8} y={y(t)} class="tick" text-anchor="end" dominant-baseline="middle">
+            {pct(t)}
+          </text>
+        </g>
+      ))}
+      {levels.map((snr, i) => (
+        <text x={x(i)} y={M.top + ih + 20} class="tick" text-anchor="middle">
+          {snr === null ? "no noise" : noiseVsVoice(snr)}
+        </text>
+      ))}
+      <text x={M.left + iw / 2} y={H - 4} class="axis-title" text-anchor="middle">
+        noise level compared with the voice (louder to the right)
+      </text>
+      <text
+        transform={`translate(12 ${M.top + ih / 2}) rotate(-90)`}
+        class="axis-title"
+        text-anchor="middle"
+      >
+        sentences usable
+      </text>
+      {series.map((s) => <path d={s.band} fill={s.color} class="band" />)}
+      {series.map((s) => <path d={s.line} stroke={s.color} class="line" pathLength="1" />)}
+      {series.map((s) =>
+        s.points.map((p, i) => <circle cx={x(i)} cy={y(p.usable_rate)} r="4.5" fill={s.color} class="dot" />),
+      )}
+      {ends.map((e) => (
+        <text x={M.left + iw + 12} y={e.y} class="end-label" dominant-baseline="middle">
+          {e.label}
+        </text>
+      ))}
+      <line class="crosshair" x1="0" x2="0" y1={M.top} y2={M.top + ih} />
+      {levels.map((_, i) => {
+        const half = iw / Math.max(1, levels.length - 1) / 2;
+        return (
+          <rect
+            class="hit"
+            x={x(i) - half}
+            y={M.top}
+            width={half * 2}
+            height={ih}
+            data-x={x(i)}
+            data-tip={tips[i]}
+          />
+        );
+      })}
+    </svg>
+    <div class="tooltip" role="status" hidden />
+  </div>
+  <details class="table-view">
+    <summary>Show table</summary>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Noise vs voice</th>
+          {series.map((s) => <th scope="col">{s.label}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {levels.map((snr, i) => (
+          <tr>
+            <th scope="row">{snr === null ? "No noise" : noiseVsVoice(snr)}</th>
+            {series.map((s) => (
+              <td>
+                {pct(s.points[i].usable_rate)}{" "}
+                <small>
+                  ({s.points[i].usable_count}/{s.points[i].n_clips}; {pct(s.points[i].usable_low)}–
+                  {pct(s.points[i].usable_high)}; WER {pct(s.points[i].wer)})
+                </small>
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </details>
+</figure>

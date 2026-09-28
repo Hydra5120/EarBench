@@ -1,0 +1,44 @@
+<script>
+  // One small handler for every build-time chart: crosshair + tooltip on hover/tap.
+  for (const chart of document.querySelectorAll<HTMLElement>("[data-chart]")) {
+    const svg = chart.querySelector("svg");
+    const tip = chart.querySelector<HTMLElement>(".tooltip");
+    const cross = chart.querySelector<SVGLineElement>(".crosshair");
+    if (!svg || !tip) continue;
+    const show = (hit: SVGRectElement) => {
+      const data = JSON.parse(hit.dataset.tip ?? "{}") as { title: string; rows: string[][] };
+      tip.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = data.title;
+      const table = document.createElement("table");
+      for (const row of data.rows) {
+        const tr = table.insertRow();
+        for (const value of row) tr.insertCell().textContent = value;
+      }
+      tip.append(title, table);
+      const box = svg.getBoundingClientRect();
+      const scale = box.width / svg.viewBox.baseVal.width;
+      const hb = hit.getBBox();
+      const cx = hit.dataset.x ? Number(hit.dataset.x) : hb.x + hb.width / 2;
+      const cy = hit.dataset.y ? Number(hit.dataset.y) : hb.y + 8;
+      const left = Math.min(Math.max(cx * scale, 100), box.width - 100);
+      tip.style.left = `${left}px`;
+      tip.style.top = `${cy * scale}px`;
+      tip.hidden = false;
+      if (cross && hit.dataset.x) {
+        cross.setAttribute("x1", hit.dataset.x);
+        cross.setAttribute("x2", hit.dataset.x);
+        cross.style.opacity = "1";
+      }
+    };
+    const hide = () => {
+      tip.hidden = true;
+      if (cross) cross.style.opacity = "0";
+    };
+    for (const hit of chart.querySelectorAll<SVGRectElement>(".hit")) {
+      hit.addEventListener("pointerenter", () => show(hit));
+      hit.addEventListener("pointerdown", () => show(hit));
+    }
+    svg.addEventListener("pointerleave", hide);
+  }
+</script>

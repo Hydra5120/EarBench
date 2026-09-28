@@ -280,12 +280,6 @@ def _block_seed(seed: int, distance_m: float, condition: RoomCondition) -> int:
     return int.from_bytes(digest[:4], "little")
 
 
-def _condition_seed(seed: int, clip_id: str, noise_type: str) -> int:
-    """Stable per-condition noise offset seed, independent of processing order."""
-    digest = hashlib.sha256(f"{seed}:{clip_id}:{noise_type}".encode()).digest()
-    return int.from_bytes(digest[:4], "little")
-
-
 def playlist_filename(distance_m: float, condition: RoomCondition) -> str:
     """One playlist per block: `playlist_<dist>m_<cond>.wav` (+ `.csv` timing)."""
     return f"playlist_{distance_m:g}m_{condition}.wav"
@@ -1026,7 +1020,7 @@ def compare_session(
             if row.noise_type == "none" or row.snr_db is None or tv_noise is None:
                 mixed = speech
             else:
-                seed = _condition_seed(session.seed, row.clip_id, row.noise_type)
+                seed = sweep_mod.condition_seed(session.seed, row.clip_id, row.noise_type)
                 mixed = noise.mix(
                     speech,
                     noise.noise_at_mic(tv_noise, speech.shape[0], seed, use_room),
