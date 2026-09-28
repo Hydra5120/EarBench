@@ -14,8 +14,7 @@ const index = indexJson as SiteIndex;
 const charts = chartsJson as Charts;
 const room = roomJson as Room;
 
-// HUMAN: set to the public repository URL.
-const REPO_URL: string | null = null;
+const REPO_URL: string | null = "https://github.com/Hydra5120/EarBench";
 
 const noiseLabel = Object.fromEntries(index.noise_types.map((n) => [n.id, n.label]));
 const seriesLabels: Record<string, string> = {
@@ -85,10 +84,11 @@ const findingCopy: Record<string, { body: string }> = {
     <header class="hero">
       <div class="wrap hero-inner">
         <div class="hero-text">
-          <p class="eyebrow">Tested on older Australian voices</p>
           <h1 class="hero-q">Can a robot understand an older person over the TV?</h1>
           <p class="hero-a">
-            {`Not yet. With a TV on in the room, Whisper turned only ` +
+            {"Not yet."}
+            <br />
+            {`With a TV on in the room, Whisper turned only ` +
               `${pct(hero.older.usable_rate)} of older speakers' sentences into usable text.`}
           </p>
           <a class="button" href="#ears">Listen for yourself <Arrow dir="down" /></a>
@@ -145,10 +145,12 @@ const findingCopy: Record<string, { body: string }> = {
               fine-tune it on Australian recordings from Common Voice. I used the same recordings.
             </p>
             <p>
-              Robots are being built here in Australia to work in aged care. The people they talk to
-              will be older, they will have Australian accents, and there will often be a TV or other
-              residents talking in the background. I built this to see how off-the-shelf Whisper
-              copes with that mix, before any fine-tuning.
+              OpenAI's Whisper is one of the most popular speech recognition models used in robotics, which
+              makes it worth knowing exactly where it falls short. Robots are being built here in
+              Australia to work in aged care. The people they talk to will be older, they will have
+              Australian accents, and there will often be a TV or other residents talking in the
+              background. I built this to see how Whisper copes with that mix, before
+              any fine-tuning.
             </p>
           </div>
         </div>
@@ -156,7 +158,6 @@ const findingCopy: Record<string, { body: string }> = {
 
       <section id="ears" class="ears">
         <div class="wrap">
-          <h2>Be the robot's ears</h2>
           <p class="lede">
             Pick a voice, add some noise and press play. You hear what the robot's microphone
             picked up from {index.distance_m} m away, and what Whisper wrote down.
@@ -167,7 +168,6 @@ const findingCopy: Record<string, { body: string }> = {
 
       <section id="findings" class="findings">
         <div class="wrap">
-          <h2>What I found</h2>
           <ol class="finding-list">
             {charts.findings.map((finding) => (
               <li class="finding reveal">
@@ -294,9 +294,6 @@ const findingCopy: Record<string, { body: string }> = {
 <style>
   .hero {
     padding-block: clamp(48px, 8vw, 104px) clamp(24px, 4vw, 48px);
-    background:
-      radial-gradient(1200px 500px at 85% -10%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 70%),
-      var(--page);
   }
   .hero-inner {
     display: grid;

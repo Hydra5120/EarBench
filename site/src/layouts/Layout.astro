@@ -30,7 +30,6 @@ const versions = [
   <body>
     <nav class="topnav" aria-label="Pages">
       <div class="wrap topnav-inner">
-        <a class="wordmark" href="/">EarBench</a>
         <div class="navtabs">
           <a href="/" aria-current={active === "results" ? "page" : undefined}>Results</a>
           <a href="/setup/" aria-current={active === "setup" ? "page" : undefined}>How I tested it</a>
@@ -83,15 +82,9 @@ const versions = [
   .topnav-inner {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 16px;
     min-height: 56px;
-  }
-  .wordmark {
-    font-family: var(--serif);
-    font-size: 1.2rem;
-    color: var(--ink);
-    text-decoration: none;
   }
   .navtabs {
     display: flex;
