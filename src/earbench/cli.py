@@ -334,7 +334,8 @@ def export_site(
     typer.echo(f"wrote {result.out_dir}")
     typer.echo(f"clips: {result.clips}   transcripts: {result.transcripts}")
     typer.echo(
-        f"audio: {result.audio_files} MP3s, {result.audio_bytes / 1e6:.2f} MB   "
+        f"audio: {result.audio_files} MP3s + {result.noise_beds} noise beds, "
+        f"{result.audio_bytes / 1e6:.2f} MB   "
         f"json: {result.json_bytes / 1e3:.0f} kB"
     )
     for clip_id, size in result.per_clip_bytes.items():

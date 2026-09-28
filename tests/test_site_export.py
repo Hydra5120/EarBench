@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import json
 from pathlib import Path
@@ -163,6 +164,14 @@ def test_export_writes_data_and_no_tv_audio(site_env) -> None:
 
     mp3s = sorted(p.name for p in (out / "audio").rglob("*.mp3"))
     assert len(mp3s) == result.audio_files == 2 * 2
+    # One noise-only bed per audio noise type for the "record your voice" panel, never TV.
+    beds = {n["id"]: n.get("bed") for n in index["noise_types"]}
+    assert beds["living"].startswith("noise/living.") and beds["tv"] is None
+    assert result.noise_beds == len(list((out / "noise").glob("*.json"))) == 1
+    bed = json.loads((out / beds["living"]).read_text(encoding="utf-8"))
+    head = base64.b64decode(bed["mp3_base64"])[:2]
+    assert head[0] == 0xFF and head[1] & 0xE0 == 0xE0  # an MP3 inside the JSON
+    assert index["voice_seconds"] == 5.0
     assert not [name for name in mp3s if name.startswith("tv")]
     assert not [p for p in out.rglob("*") if p.is_file() and "tv" in p.name and p.suffix != ".json"]
     # Regenerated audio is byte-for-byte what the sweep transcribed (cache keys hit).

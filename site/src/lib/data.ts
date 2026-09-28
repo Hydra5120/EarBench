@@ -55,6 +55,7 @@ export interface NoiseOption {
   id: string;
   label: string;
   audio: boolean;
+  bed?: string; // noise-only loop for the "record your voice" panel (never TV)
 }
 
 export interface RunInfo {
@@ -79,6 +80,7 @@ export interface SiteIndex {
   noise_types: NoiseOption[];
   vad_noise_types: string[];
   tv_note: string;
+  voice_seconds: number;
   clips: ClipInfo[];
 }
 
@@ -174,6 +176,14 @@ export const snrLabel = (snr: number | null): string => (snr === null ? "No nois
 // bigger number (-20 dB, -10 dB, ... 0 dB = as loud as the voice).
 export const noiseVsVoice = (snr: number | null): string =>
   snr === null ? "Off" : snr === 0 ? "0 dB" : `−${snr} dB`;
+
+// 24x24 stroke icons for the noise tabs.
+export const NOISE_ICON: Record<string, string> = {
+  living: "M5 11V8.5A2.5 2.5 0 0 1 7.5 6h9A2.5 2.5 0 0 1 19 8.5V11M3 12.5a1.5 1.5 0 0 1 3 0V14h12v-1.5a1.5 1.5 0 0 1 3 0V17H3zM5 17v2M19 17v2",
+  kitchen: "M4 10h16v5a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4zM2 10h2M20 10h2M9 3.5c0 1.2-1 1.3-1 2.5M13 3.5c0 1.2-1 1.3-1 2.5",
+  cafeteria: "M4 9h12v4.5A5.5 5.5 0 0 1 10.5 19h-1A5.5 5.5 0 0 1 4 13.5zM16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5v2.5M12 3.5v2.5",
+  tv: "M4 7h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM8.5 3.5 12 7l3.5-3.5M8 21h8",
+};
 
 const GENDER: Record<string, string> = { female: "woman", male: "man" };
 const DECADE: Record<string, string> = {

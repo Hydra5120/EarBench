@@ -13,6 +13,8 @@
   Cache-Control: public, max-age=31536000, immutable
 /data/clips/*
   Cache-Control: public, max-age=31536000, immutable
+/data/noise/*
+  Cache-Control: public, max-age=31536000, immutable
 
 # Fixed names that change on re-export or re-upload: revalidate.
 /data/index.json

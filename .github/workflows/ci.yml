@@ -34,6 +34,12 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - run: npm ci
       - run: npm run build
+      # Browser tests against the built site on Cloudflare's local runtime. The @slow ones
+      # download Whisper (44 MB) and run locally with `npm run test:e2e:slow`.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          WRANGLER_SEND_METRICS: "false"
       - uses: actions/upload-artifact@v4
         with:
           name: site-dist

@@ -5,14 +5,18 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build && node scripts/check-dist.mjs",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "test:e2e": "playwright test --grep-invert @slow",
+    "test:e2e:slow": "playwright test --grep @slow"
   },
   "dependencies": {
     "@astrojs/svelte": "^9.0.1",
+    "@huggingface/transformers": "^4.3.0",
     "astro": "^7.3.5",
     "svelte": "^5.57.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "typescript": "^6.0.3",
     "wrangler": "^4.147.0"
   }

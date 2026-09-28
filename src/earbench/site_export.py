@@ -8,6 +8,7 @@ plus MP3s under `site/public/data/`. TV conditions never get audio.
 
 from __future__ import annotations
 
+import base64
 import csv
 import hashlib
 import io
@@ -54,6 +55,7 @@ class ExportSummary:
     transcripts: int = 0
     audio_files: int = 0
     audio_bytes: int = 0
+    noise_beds: int = 0  # noise-only loops for the "record your voice" panel
     json_bytes: int = 0
     cache_checked: int = 0
     cache_matched: int = 0
@@ -209,6 +211,31 @@ def encode_mp3(samples: np.ndarray) -> bytes:
     buffer = io.BytesIO()
     sf.write(buffer, samples, audio.SAMPLE_RATE_HZ, format="MP3")
     return buffer.getvalue()
+
+
+def _write_noise_bed(
+    site: SiteConfig,
+    cfg: SweepConfig,
+    noise_type: NoiseType,
+    noise_file: np.ndarray,
+    summary: ExportSummary,
+) -> str:
+    """A noise-only segment through the same room, for mixing with a visitor's own voice.
+
+    The browser sets the SNR itself, so only the shape matters: it is peak-normalised.
+    The MP3 is wrapped in JSON because download-manager extensions grab fetched .mp3 files.
+    """
+    n = min(noise_file.shape[0], int((site.voice_seconds + 1.0) * audio.SAMPLE_RATE_HZ))
+    seed = sweep_mod.condition_seed(cfg.seed, "voice", noise_type)
+    bed = noise.noise_at_mic(noise_file, n, seed, cfg.room)
+    peak = float(np.max(np.abs(bed)))
+    data = encode_mp3(bed * (0.9 / peak) if peak > 0 else bed)
+    name = f"noise/{noise_type}.{_short_hash(data)}.json"
+    payload = {"noise_type": noise_type, "mp3_base64": base64.b64encode(data).decode("ascii")}
+    (site.out_dir / name).parent.mkdir(parents=True, exist_ok=True)
+    summary.noise_beds += 1
+    summary.audio_bytes += _write_json(site.out_dir / name, payload)
+    return name
 
 
 def _summary_lookup(
@@ -405,12 +432,16 @@ def export_site(site: SiteConfig) -> ExportSummary:
             raise ValueError(f"clip {clip.id}: featured condition {featured} is not on the site")
 
     out_dir = site.out_dir
-    for sub in ("audio", "clips"):
+    for sub in ("audio", "clips", "noise"):
         shutil.rmtree(out_dir / sub, ignore_errors=True)
     summary = ExportSummary(out_dir=out_dir)
     summary.cache_dir_found = full_cfg.cache_dir.is_dir() and vad_cfg.cache_dir.is_dir()
 
     noise_audio = {nt: sweep_mod.load_noise(full_cfg, nt) for nt in site.audio_noise_types}
+    beds = {
+        nt: _write_noise_bed(site, full_cfg, nt, noise_audio[nt], summary)
+        for nt in site.audio_noise_types
+    }
     index_clips = []
     for clip in site.clips:
         info = by_clip[clip.id]
@@ -522,7 +553,7 @@ def export_site(site: SiteConfig) -> ExportSummary:
         "models": site.models,
         "levels": [level.model_dump() for level in site.levels],
         "noise_types": [
-            {"id": nt, "label": site.noise_labels.get(nt, nt), "audio": True}
+            {"id": nt, "label": site.noise_labels.get(nt, nt), "audio": True, "bed": beds[nt]}
             for nt in site.audio_noise_types
         ]
         + [
@@ -531,6 +562,7 @@ def export_site(site: SiteConfig) -> ExportSummary:
         ],
         "vad_noise_types": ["none", *site.audio_noise_types],
         "tv_note": site.tv_note,
+        "voice_seconds": site.voice_seconds,
         "clips": index_clips,
     }
     summary.json_bytes += _write_json(out_dir / "index.json", index)

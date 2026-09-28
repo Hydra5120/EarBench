@@ -133,6 +133,7 @@ class SiteConfig(BaseModel):
     charts: list[SiteChart] = []
     transcriber_name: str = "faster-whisper"  # part of the transcription cache key
     tv_note: str = "audio not shown: copyrighted TV recording"
+    voice_seconds: float = 5.0  # "record your voice" limit; noise beds are a second longer
     out_dir: Path = Path("site/public/data")
 
     @model_validator(mode="after")

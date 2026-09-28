@@ -39,6 +39,8 @@ __pycache__/
 # needs no datasets. CC0 speech mixed with CC BY-SA DEMAND noise; never TV audio.
 !site/public/data/
 !site/public/data/**/*.mp3
+# Fake-microphone clip for the browser tests (Common Voice, CC0)
+!site/tests/fixtures/voice.wav
 
 # Original setup photos (the site uses resized copies in site/public/img/)
 /*.jpg

@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import EarsPanel from "../components/EarsPanel.svelte";
+import VoicePanel from "../components/VoicePanel.svelte";
 import LineChart from "../components/LineChart.astro";
 import RoomChart from "../components/RoomChart.astro";
 import ChartTooltip from "../components/ChartTooltip.astro";
@@ -166,6 +167,17 @@ const findingCopy: Record<string, { body: string }> = {
         </div>
       </section>
 
+      <section id="your-voice" class="voice">
+        <div class="wrap">
+          <p class="lede">
+            {`Now try your own voice. Record up to ${index.voice_seconds} seconds and Whisper tiny ` +
+              "transcribes it right here in your browser, once as you said it and once with " +
+              "the noise mixed in. Nothing is uploaded."}
+          </p>
+          <VoicePanel client:visible index={index} />
+        </div>
+      </section>
+
       <section id="findings" class="findings">
         <div class="wrap">
           <ol class="finding-list">
@@ -272,7 +284,7 @@ const findingCopy: Record<string, { body: string }> = {
               <a href="https://github.com/LCAV/pyroomacoustics">pyroomacoustics</a> (MIT).
             </li>
             <li>
-              Live transcription uses{" "}
+              Your-voice transcription uses{" "}
               <a href="https://github.com/huggingface/transformers.js">transformers.js</a> (Apache
               2.0).
             </li>
@@ -430,6 +442,9 @@ const findingCopy: Record<string, { body: string }> = {
     font-size: 1.05rem;
   }
   .ears {
+    padding-top: clamp(24px, 3vw, 40px);
+  }
+  .voice {
     padding-top: clamp(24px, 3vw, 40px);
   }
   .narrow > * {

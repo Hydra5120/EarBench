@@ -28,11 +28,12 @@ const gz = (pred) =>
   files
     .filter(pred)
     .reduce((a, f) => a + gzipSync(readFileSync(join(DIST, f.path)), { level: 9 }).length, 0);
-// First load = the page plus every script it can run before Play (the live Whisper
-// worker, added in Stage 4, loads only on "Run live" and lives under _astro/live-*).
+// First load = the page plus every script it runs before the visitor scrolls down.
+// The your-voice panel (client:visible), its helpers and the Whisper worker load later.
+const onDemand = (path) => /(^|\/)(VoicePanel|live|mix|whisper\.worker)[.-]/.test(path);
 const html = gz((f) => f.path === "index.html");
-const js = gz((f) => f.path.endsWith(".js") && !f.path.includes("live-"));
-const JS_BUDGET = 25 * 1024;
+const js = gz((f) => f.path.endsWith(".js") && !onDemand(f.path));
+const JS_BUDGET = 30 * 1024; // self-imposed; the plan's limit is 3 MB before Play
 console.log(`dist: ${files.length} files, largest ${kb(Math.max(...files.map((f) => f.size)))}`);
 console.log(`first load (gzip): index.html ${kb(html)}, js ${kb(js)} (budget ${kb(JS_BUDGET)})`);
 if (js > JS_BUDGET) errors.push(`first-load JS ${kb(js)} gzip is over the ${kb(JS_BUDGET)} budget`);
